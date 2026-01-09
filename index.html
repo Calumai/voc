@@ -32,6 +32,11 @@
             background-color: #0f172a; 
             color: #f1f5f9;
         }
+        /* 禁止選取文字，避免拖曳時反白 */
+        .no-select {
+            user-select: none;
+            -webkit-user-select: none;
+        }
     </style>
 </head>
 <body>
@@ -91,7 +96,7 @@
 
             // Active Marker Display
             const [activeDisplay, setActiveDisplay] = useState(null); 
-            const [activeMarkerIndex, setActiveMarkerIndex] = useState(null); // Track currently active marker index
+            const [activeMarkerIndex, setActiveMarkerIndex] = useState(null); 
 
             // Merger State
             const [stagedFiles, setStagedFiles] = useState({}); 
@@ -338,7 +343,6 @@
                 setStagedFiles(newStaged);
             };
 
-            // CORE LOGIC: Merge and Split per File, Preserving Script Order
             const handleMergeAndLoad = async () => {
                 if (scriptData.length === 0) {
                     alert("請先載入腳本");
@@ -558,18 +562,11 @@
                 drawLoop();
             };
 
-            // Play Marker by Index
             const playMarkerByIndex = (index) => {
                 if (index < 0 || index >= markers.length) return;
                 const marker = markers[index];
-                
-                // If missing, find next valid? For now, just skip.
                 if (marker.qualityStatus === 'missing') return;
-
-                // Play
                 playRange(marker.start, marker.duration);
-                
-                // Update Display and Index
                 const resolved = resolveMarkerData(marker, index);
                 setActiveDisplay(resolved);
                 setActiveMarkerIndex(index);
@@ -578,29 +575,15 @@
             const playPreviousSegment = () => {
                 if (markers.length === 0) return;
                 let newIndex = activeMarkerIndex !== null ? activeMarkerIndex - 1 : 0;
-                
-                // Find previous valid marker
-                while (newIndex >= 0 && markers[newIndex].qualityStatus === 'missing') {
-                    newIndex--;
-                }
-                
-                if (newIndex >= 0) {
-                    playMarkerByIndex(newIndex);
-                }
+                while (newIndex >= 0 && markers[newIndex].qualityStatus === 'missing') { newIndex--; }
+                if (newIndex >= 0) { playMarkerByIndex(newIndex); }
             };
 
             const playNextSegment = () => {
                 if (markers.length === 0) return;
                 let newIndex = activeMarkerIndex !== null ? activeMarkerIndex + 1 : 0;
-                
-                // Find next valid marker
-                while (newIndex < markers.length && markers[newIndex].qualityStatus === 'missing') {
-                    newIndex++;
-                }
-                
-                if (newIndex < markers.length) {
-                    playMarkerByIndex(newIndex);
-                }
+                while (newIndex < markers.length && markers[newIndex].qualityStatus === 'missing') { newIndex++; }
+                if (newIndex < markers.length) { playMarkerByIndex(newIndex); }
             };
 
             const resolveMarkerData = (marker, index) => {
@@ -716,7 +699,6 @@
                 }
             }, [detectMarkers, viewMode, editMode]);
 
-            // If user changes slider, force auto mode
             const handleSliderChange = (setter) => (e) => {
                 setEditMode('auto');
                 setter(Number(e.target.value));
@@ -728,7 +710,13 @@
                 return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')}`;
             }
 
-            const getCanvasX = (e) => { if (!canvasRef.current) return 0; const rect = canvasRef.current.getBoundingClientRect(); return e.clientX - rect.left; };
+            // Fixed getCanvasX: Calculate scaling ratio between internal (attribute) width and CSS client width
+            const getCanvasX = (e) => {
+                if (!canvasRef.current) return 0;
+                const rect = canvasRef.current.getBoundingClientRect();
+                const scaleX = canvasRef.current.width / rect.width;
+                return (e.clientX - rect.left) * scaleX;
+            };
             
             const handleCanvasMouseMove = (e) => {
                 if (!audioBuffer) return;
@@ -779,8 +767,8 @@
                     })); return;
                 }
 
-                // Hover Detection
-                const hoverThresholdPx = 15; // Increased area
+                // Hover Detection - Updated Hit Test for Handles
+                const hoverThresholdPx = 12 * (canvasRef.current.width / canvasRef.current.getBoundingClientRect().width); // Scale hit area based on canvas scale
                 let target = null;
                 let foundEdge = false;
                 
@@ -935,10 +923,23 @@
                     const startX = (marker.start / audioBuffer.duration) * width; const endX = (marker.end / audioBuffer.duration) * width;
                     if (hoverTarget?.id === marker.id && hoverTarget?.type === 'body') { ctx.fillStyle = 'rgba(239, 68, 68, 0.4)'; } else { ctx.fillStyle = 'rgba(239, 68, 68, 0.2)'; }
                     ctx.fillRect(startX, 0, endX - startX, height);
-                    ctx.lineWidth = 2;
-                    ctx.beginPath(); ctx.strokeStyle = (hoverTarget?.id === marker.id && hoverTarget?.type === 'start') ? '#ffffff' : '#ef4444'; ctx.moveTo(startX, 0); ctx.lineTo(startX, height); ctx.stroke();
-                    ctx.beginPath(); ctx.strokeStyle = (hoverTarget?.id === marker.id && hoverTarget?.type === 'end') ? '#ffffff' : '#ef4444'; ctx.moveTo(endX, 0); ctx.lineTo(endX, height); ctx.stroke();
-                    ctx.fillStyle = '#ef4444'; ctx.font = '10px sans-serif'; ctx.fillText(marker.id, startX + 2, 12); 
+                    
+                    // Draw Handles
+                    ctx.lineWidth = 4; // Thicker visual handle
+                    // Start Handle
+                    ctx.beginPath();
+                    const isHoverStart = hoverTarget?.id === marker.id && hoverTarget?.type === 'start';
+                    ctx.strokeStyle = isHoverStart ? '#ffffff' : 'rgba(239, 68, 68, 0.8)';
+                    ctx.moveTo(startX, 0); ctx.lineTo(startX, height); ctx.stroke();
+                    // End Handle
+                    ctx.beginPath();
+                    const isHoverEnd = hoverTarget?.id === marker.id && hoverTarget?.type === 'end';
+                    ctx.strokeStyle = isHoverEnd ? '#ffffff' : 'rgba(239, 68, 68, 0.8)';
+                    ctx.moveTo(endX, 0); ctx.lineTo(endX, height); ctx.stroke();
+
+                    // ID Label
+                    ctx.fillStyle = '#ef4444'; ctx.font = '12px sans-serif'; 
+                    ctx.fillText(marker.id, startX + 5, 15); 
                 });
                 
                 // Playhead
