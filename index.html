@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>小寶貝的2.0</title>
+    <title>小寶貝的3.0</title>
     
     <!-- 載入 Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -45,7 +45,8 @@
     <script type="text/babel" data-type="module">
         import React, { useState, useRef, useEffect, useMemo, useCallback } from 'https://esm.sh/react@18.2.0';
         import ReactDOM from 'https://esm.sh/react-dom@18.2.0/client';
-        import { Upload, Download, Settings, Play, Pause, RefreshCw, Mic, Users, AlertCircle, FileAudio, Scissors, FileSpreadsheet, ZoomIn, Activity, Package, Trash2, Gauge, BrainCircuit, Wand2, Layers, CheckCircle2, XCircle, FileMusic, ArrowRight, Merge, Link2, Link2Off, Move, Plus, MousePointer2, MessageSquare, AlertTriangle, SkipBack, SkipForward, Square, Eye, EyeOff } from 'https://esm.sh/lucide-react@0.294.0?deps=react@18.2.0';
+        // Added Wand to imports
+        import { Upload, Download, Settings, Play, Pause, RefreshCw, Mic, Users, AlertCircle, FileAudio, Scissors, FileSpreadsheet, ZoomIn, Activity, Package, Trash2, Gauge, BrainCircuit, Wand2, Layers, CheckCircle2, XCircle, FileMusic, ArrowRight, Merge, Link2, Link2Off, Move, Plus, MousePointer2, MessageSquare, AlertTriangle, SkipBack, SkipForward, Square, Eye, EyeOff, Volume2, Sliders, X, Wand } from 'https://esm.sh/lucide-react@0.294.0?deps=react@18.2.0';
 
         // Web Worker for Transformers.js (AI)
         const workerScript = `
@@ -72,14 +73,12 @@
         // --- Mini Waveform Component ---
         const MiniWaveform = React.memo(({ marker, audioBuffer, onChange, onPlay }) => {
             const canvasRef = useRef(null);
-            const [hoverType, setHoverType] = useState(null); // 'start', 'end', 'body'
-            const dragRef = useRef(null); // { type, startX, startVal, endVal, offset }
+            const [hoverType, setHoverType] = useState(null); 
+            const dragRef = useRef(null); 
 
-            // Define window: marker range + context
-            // context: 1s padding on each side for context, but keep it centered
             const duration = marker.end - marker.start;
             const center = (marker.start + marker.end) / 2;
-            const windowDuration = Math.max(duration * 1.5, 3.0); // At least 3 seconds, or 1.5x duration
+            const windowDuration = Math.max(duration * 1.5, 3.0); 
             const windowStart = Math.max(0, center - windowDuration / 2);
             const windowEnd = Math.min(audioBuffer ? audioBuffer.duration : 0, windowStart + windowDuration);
             const realWindowDuration = windowEnd - windowStart;
@@ -92,12 +91,9 @@
                 const height = canvas.height;
 
                 ctx.clearRect(0, 0, width, height);
-
-                // Draw Background
-                ctx.fillStyle = '#0f172a'; // Slate 900 background for mini
+                ctx.fillStyle = '#0f172a'; 
                 ctx.fillRect(0, 0, width, height);
 
-                // Draw Waveform
                 const sampleRate = audioBuffer.sampleRate;
                 const startSample = Math.floor(windowStart * sampleRate);
                 const endSample = Math.floor(windowEnd * sampleRate);
@@ -107,7 +103,7 @@
                 const amp = height / 2;
 
                 ctx.beginPath();
-                ctx.strokeStyle = '#60a5fa'; // Blue-400
+                ctx.strokeStyle = '#60a5fa'; 
                 ctx.lineWidth = 1;
 
                 for (let i = 0; i < width; i++) {
@@ -121,52 +117,43 @@
                             if (datum > max) max = datum;
                         }
                     }
-                    if (min === 1.0) { min = 0; max = 0; } // Silence
+                    if (min === 1.0) { min = 0; max = 0; } 
                     ctx.moveTo(i, (1 + min) * amp);
                     ctx.lineTo(i, (1 + max) * amp);
                 }
                 ctx.stroke();
 
-                // Calculate Marker Positions
                 const x1 = ((marker.start - windowStart) / realWindowDuration) * width;
                 const x2 = ((marker.end - windowStart) / realWindowDuration) * width;
 
-                // Draw Selection
-                ctx.fillStyle = 'rgba(239, 68, 68, 0.3)'; // Red transparent
+                ctx.fillStyle = 'rgba(239, 68, 68, 0.3)'; 
                 ctx.fillRect(x1, 0, x2 - x1, height);
 
-                // Draw Handles
                 ctx.lineWidth = 4;
                 
-                // Start Handle
                 ctx.beginPath();
                 ctx.strokeStyle = hoverType === 'start' ? '#ffffff' : 'rgba(239, 68, 68, 0.8)';
                 ctx.moveTo(x1, 0); ctx.lineTo(x1, height); ctx.stroke();
 
-                // End Handle
                 ctx.beginPath();
                 ctx.strokeStyle = hoverType === 'end' ? '#ffffff' : 'rgba(239, 68, 68, 0.8)';
                 ctx.moveTo(x2, 0); ctx.lineTo(x2, height); ctx.stroke();
 
-                // Cursor Update
                 if (hoverType === 'start' || hoverType === 'end') canvas.style.cursor = 'col-resize';
                 else if (hoverType === 'body') canvas.style.cursor = 'grab';
                 else canvas.style.cursor = 'default';
 
             }, [marker, audioBuffer, windowStart, windowEnd, hoverType]);
 
-            // Interaction Handlers
             const handleMouseMove = (e) => {
                 const canvas = canvasRef.current;
                 const rect = canvas.getBoundingClientRect();
-                // Fix coordinate scale
                 const scaleX = canvas.width / rect.width;
                 const x = (e.clientX - rect.left) * scaleX;
                 const width = canvas.width;
                 const time = windowStart + (x / width) * realWindowDuration;
 
                 if (dragRef.current) {
-                    // Dragging
                     const { type, startX, startVal, endVal, offset } = dragRef.current;
                     let newStart = marker.start;
                     let newEnd = marker.end;
@@ -189,10 +176,9 @@
 
                     onChange(marker.id, { start: newStart, end: newEnd });
                 } else {
-                    // Hovering
                     const x1 = ((marker.start - windowStart) / realWindowDuration) * width;
                     const x2 = ((marker.end - windowStart) / realWindowDuration) * width;
-                    const threshold = 15; // px hit area
+                    const threshold = 15; 
 
                     if (Math.abs(x - x1) < threshold) setHoverType('start');
                     else if (Math.abs(x - x2) < threshold) setHoverType('end');
@@ -315,6 +301,17 @@
             const [padding, setPadding] = useState(0.1);
             const [speakerMode, setSpeakerMode] = useState(true);
             const [exportAsRange, setExportAsRange] = useState(true); 
+            
+            // CSV Encoding State
+            const [csvEncoding, setCsvEncoding] = useState('utf-8');
+
+            // Normalize Settings
+            const [doNormalize, setDoNormalize] = useState(true);
+            const [targetLoudness, setTargetLoudness] = useState(-16);
+            
+            // Denoise UI State
+            const [expandedDenoiseId, setExpandedDenoiseId] = useState(null);
+
             const [zoomLevel, setZoomLevel] = useState(1);
             const [ampScale, setAmpScale] = useState(1);
             const [scrollLeft, setScrollLeft] = useState(0); 
@@ -332,13 +329,10 @@
             const jsZipRef = useRef(window.JSZip);
             const workerRef = useRef(null);
             
-            // New State for toggling Big Waveform
             const [showBigWaveform, setShowBigWaveform] = useState(false);
 
-            // Calculate missing count safely
             const missingCount = useMemo(() => markers.filter(m => m.qualityStatus === 'missing').length, [markers]);
 
-            // Initialize Worker
             useEffect(() => {
                 const blob = new Blob([workerScript], { type: 'application/javascript' });
                 const url = URL.createObjectURL(blob);
@@ -361,7 +355,6 @@
                 return () => workerRef.current?.terminate();
             }, []);
 
-            // Keyboard Shortcuts
             useEffect(() => {
                 const handleKeyDown = (e) => {
                     if (viewMode !== 'splitter') return;
@@ -374,9 +367,8 @@
                 return () => window.removeEventListener('keydown', handleKeyDown);
             }, [activeMarkerIndex, markers, isPlaying, audioBuffer, viewMode]);
 
-            // Update Marker from MiniWaveform
             const handleMarkerUpdate = useCallback((id, newTiming) => {
-                setEditMode('manual'); // Switch to manual to prevent overwrite
+                setEditMode('manual'); 
                 setMarkers(prev => prev.map(m => {
                     if (m.id === id) {
                         return { 
@@ -390,50 +382,273 @@
                     return m;
                 }));
             }, []);
-
-            // ... (Helpers: loadAiModel, getSegmentsInFile, calculateSimilarity, runRecognition, getAudioContext, parseCSV, concatAudioBuffers, handleScriptUpload, handleStagedFilesUpload, removeStagedFile, handleMergeAndLoad, handleSingleFileUpload, deleteMarker, encodeWAV, getAudioSegmentBlob, stopPlayback, togglePlay, playRange, playBatchFile, playMarkerByIndex, playPreviousSegment, playNextSegment, resolveMarkerData, downloadSegment, downloadAllZip, exportCSV, detectMarkers, handleSliderChange, formatTime, getCanvasX, handleCanvasMouseMove, handleCanvasMouseDown, handleCanvasMouseUp, handleCanvasMouseLeave, handleMinimapMouseDown, handleMinimapMouseMove, handleContainerScroll) ...
             
-            // Shortened for brevity, assuming existing logic remains the same. Re-pasting critical ones.
+            const toggleMarkerDenoise = (id) => {
+                setEditMode('manual');
+                setMarkers(prev => prev.map(m => {
+                    if (m.id === id) {
+                        // Default params if not set
+                        const defaultParams = { highPassFreq: 100, highShelfGain: -10, peakingGain: 3 };
+                        return { 
+                            ...m, 
+                            isDenoised: !m.isDenoised,
+                            denoiseParams: m.denoiseParams || defaultParams
+                        };
+                    }
+                    return m;
+                }));
+            };
+
+            const updateMarkerDenoiseParams = (id, newParams) => {
+                setEditMode('manual');
+                setMarkers(prev => prev.map(m => {
+                    if (m.id === id) {
+                        return { ...m, denoiseParams: { ...m.denoiseParams, ...newParams } };
+                    }
+                    return m;
+                }));
+            };
+
             const loadAiModel = () => { if (workerRef.current) workerRef.current.postMessage({ type: 'load' }); };
             const getSegmentsInFile = (channelData, sampleRate, thresholdDB, minSilenceSec, minSpeechSec) => { const bufferLength = channelData.length; const thresholdLinear = Math.pow(10, thresholdDB / 20); const minSilenceSamples = minSilenceSec * sampleRate; const minSpeechSamples = minSpeechSec * sampleRate; const paddingSamples = 0.1 * sampleRate; let isSpeaking = false; let speechStart = 0; let segments = []; let silenceCount = 0; const step = 100; for (let i = 0; i < bufferLength; i += step) { const amplitude = Math.abs(channelData[i]); if (amplitude > thresholdLinear) { if (!isSpeaking) { isSpeaking = true; speechStart = i; } silenceCount = 0; } else { if (isSpeaking) { silenceCount += step; if (silenceCount > minSilenceSamples) { const speechEnd = i - silenceCount; if (speechEnd - speechStart > minSpeechSamples) { let start = Math.max(0, speechStart - paddingSamples); let end = Math.min(bufferLength, speechEnd + paddingSamples); segments.push({ start: start / sampleRate, end: end / sampleRate }); } isSpeaking = false; } } } } if (isSpeaking) { let start = Math.max(0, speechStart - paddingSamples); let end = bufferLength; segments.push({ start: start / sampleRate, end: end / sampleRate }); } return segments; };
             const calculateSimilarity = (recText, scriptText) => { if (!recText || !scriptText) return 0; const s1 = recText.toLowerCase().replace(/[^a-z0-9]/g, ''); const s2 = scriptText.toLowerCase().replace(/[^a-z0-9]/g, ''); if (s1.length === 0 && s2.length === 0) return 100; if (s1.length === 0 || s2.length === 0) return 0; const track = Array(s2.length + 1).fill(null).map(() => Array(s1.length + 1).fill(null)); for (let i = 0; i <= s1.length; i += 1) track[0][i] = i; for (let j = 0; j <= s2.length; j += 1) track[j][0] = j; for (let j = 1; j <= s2.length; j += 1) { for (let i = 1; i <= s1.length; i += 1) { const indicator = s1[i - 1] === s2[j - 1] ? 0 : 1; track[j][i] = Math.min(track[j][i - 1] + 1, track[j - 1][i] + 1, track[j - 1][i - 1] + indicator); } } const maxLength = Math.max(s1.length, s2.length); return Math.round((1 - track[s2.length][s1.length] / maxLength) * 100); };
             const runRecognition = async () => { if (aiStatus !== 'ready' || markers.length === 0 || !audioBuffer) return; setIsRecognizing(true); for (const marker of markers) { if (marker.qualityStatus === 'missing') continue; const sampleRate = audioBuffer.sampleRate; const startSample = Math.floor(marker.start * sampleRate); const endSample = Math.floor(marker.end * sampleRate); const length = endSample - startSample; if (length > 0) { const channelData = audioBuffer.getChannelData(0).slice(startSample, startSample + length); workerRef.current.postMessage({ type: 'run', audio: channelData, id: marker.id }); } } setTimeout(() => setIsRecognizing(false), 1000); };
             const getAudioContext = async () => { if (!audioContextRef.current) { const Ctx = window.AudioContext || window.webkitAudioContext; audioContextRef.current = new Ctx(); } if (audioContextRef.current.state === 'suspended') { try { await audioContextRef.current.resume(); } catch (e) {} } return audioContextRef.current; };
+            
             const parseCSV = (text) => { const rows = []; let currentRow = []; let currentCell = ''; let insideQuote = false; for (let i = 0; i < text.length; i++) { const char = text[i]; const nextChar = text[i + 1]; if (char === '"') { if (insideQuote && nextChar === '"') { currentCell += '"'; i++; } else { insideQuote = !insideQuote; } } else if (char === ',' && !insideQuote) { currentRow.push(currentCell.trim()); currentCell = ''; } else if ((char === '\r' || char === '\n') && !insideQuote) { if (currentCell || currentRow.length > 0) { currentRow.push(currentCell.trim()); rows.push(currentRow); } currentRow = []; currentCell = ''; if (char === '\r' && nextChar === '\n') i++; } else { currentCell += char; } } if (currentCell || currentRow.length > 0) { currentRow.push(currentCell.trim()); rows.push(currentRow); } return rows; };
+            
             const concatAudioBuffers = (buffers, context) => { if (buffers.length === 0) return context.createBuffer(1, 1, 44100); let totalLength = 0; for (let b of buffers) totalLength += b.length; const result = context.createBuffer(buffers[0].numberOfChannels, totalLength, buffers[0].sampleRate); let offset = 0; for (let b of buffers) { for (let i = 0; i < b.numberOfChannels; i++) { result.getChannelData(i).set(b.getChannelData(i), offset); } offset += b.length; } return result; };
-            const handleScriptUpload = async (e) => { const file = e.target.files[0]; if (!file) return; const text = await file.text(); const rows = parseCSV(text); if (rows.length < 2) { alert("CSV 格式錯誤"); return; } const headers = rows[0].map(h => h.trim().toLowerCase()); let sourceFileIdx = headers.indexOf('filename'); let targetFileIdx = headers.indexOf('new_filename'); if (sourceFileIdx === -1) sourceFileIdx = headers.findIndex(h => h.includes('file')); const contentIdx = 0; const data = rows.slice(1).map((row, i) => { const primary = row[contentIdx] || ""; let sourceFileName = ""; if (sourceFileIdx !== -1 && row[sourceFileIdx]) sourceFileName = row[sourceFileIdx].trim(); let targetFileName = ""; if (targetFileIdx !== -1 && row[targetFileIdx]) targetFileName = row[targetFileIdx].trim(); if (!targetFileName && primary) targetFileName = `${(i+1).toString().padStart(3, '0')}_${primary.replace(/[\\/:*?"<>|]/g, '')}`; let secondary = ""; if (targetFileIdx !== -1 && targetFileIdx + 1 < row.length && row[targetFileIdx + 1]) { secondary = row[targetFileIdx + 1].trim(); } if (!secondary) { for (let k = row.length - 1; k >= 0; k--) { const cell = row[k] ? row[k].trim() : ""; if (cell && k !== contentIdx && k !== sourceFileIdx && k !== targetFileIdx) { secondary = cell; break; } } } return { id: i + 1, primary, secondary, sourceFileName, targetFileName, raw: row }; }).filter(item => item.primary || item.secondary); const uniqueNames = [...new Set(data.map(d => d.sourceFileName).filter(Boolean))]; setUniqueFileNames(uniqueNames); setScriptData(data); setScriptFileName(file.name); e.target.value = null; };
+            
+            const handleScriptUpload = async (e) => { 
+                const file = e.target.files[0]; 
+                if (!file) return; 
+                
+                try {
+                    const buffer = await file.arrayBuffer();
+                    const decoder = new TextDecoder(csvEncoding);
+                    const text = decoder.decode(buffer);
+                    
+                    const rows = parseCSV(text); 
+                    if (rows.length < 2) { alert("CSV 格式錯誤或無內容"); return; } 
+                    
+                    const headers = rows[0].map(h => h.trim().toLowerCase()); 
+                    let sourceFileIdx = headers.indexOf('filename'); 
+                    let targetFileIdx = headers.indexOf('new_filename'); 
+                    if (sourceFileIdx === -1) sourceFileIdx = headers.findIndex(h => h.includes('file')); 
+                    const contentIdx = 0; 
+
+                    const data = rows.slice(1).map((row, i) => { 
+                        const primary = row[contentIdx] || ""; 
+                        let sourceFileName = ""; if (sourceFileIdx !== -1 && row[sourceFileIdx]) sourceFileName = row[sourceFileIdx].trim(); 
+                        let targetFileName = ""; if (targetFileIdx !== -1 && row[targetFileIdx]) targetFileName = row[targetFileIdx].trim(); 
+                        if (!targetFileName && primary) targetFileName = `${(i+1).toString().padStart(3, '0')}_${primary.replace(/[\\/:*?"<>|]/g, '')}`; 
+                        
+                        let secondary = ""; 
+                        if (targetFileIdx !== -1 && targetFileIdx + 1 < row.length && row[targetFileIdx + 1]) { secondary = row[targetFileIdx + 1].trim(); } 
+                        if (!secondary) { for (let k = row.length - 1; k >= 0; k--) { const cell = row[k] ? row[k].trim() : ""; if (cell && k !== contentIdx && k !== sourceFileIdx && k !== targetFileIdx) { secondary = cell; break; } } } 
+                        return { id: i + 1, primary, secondary, sourceFileName, targetFileName, raw: row }; 
+                    }).filter(item => item.primary || item.secondary); 
+                    
+                    const uniqueNames = [...new Set(data.map(d => d.sourceFileName).filter(Boolean))]; 
+                    setUniqueFileNames(uniqueNames); 
+                    setScriptData(data); 
+                    setScriptFileName(file.name); 
+                } catch (err) {
+                    console.error(err);
+                    alert("讀取 CSV 失敗，請檢查編碼設定。");
+                }
+                e.target.value = null; 
+            };
+            
             const handleStagedFilesUpload = (e) => { const files = Array.from(e.target.files); if (files.length === 0) return; const newStaged = { ...stagedFiles }; files.forEach(f => { newStaged[f.name] = f; }); setStagedFiles(newStaged); e.target.value = null; };
             const removeStagedFile = (filename) => { const newStaged = { ...stagedFiles }; delete newStaged[filename]; setStagedFiles(newStaged); };
-            const handleMergeAndLoad = async () => { if (scriptData.length === 0) { alert("請先載入腳本"); return; } setIsProcessing(true); setErrorMsg(''); try { const ctx = await getAudioContext(); const buffersToConcat = []; const newMarkers = []; let globalOffset = 0; const fileBuffers = {}; const fileSegments = {}; const neededFiles = [...new Set(scriptData.map(r => r.sourceFileName).filter(Boolean))]; for (const filename of neededFiles) { const file = stagedFiles[filename]; if (file) { try { const ab = await file.arrayBuffer(); const decoded = await ctx.decodeAudioData(ab); fileBuffers[filename] = decoded; fileSegments[filename] = getSegmentsInFile(decoded.getChannelData(0), decoded.sampleRate, threshold, minSilenceDuration, minSpeechDuration); } catch (err) { console.warn(`Failed to decode ${filename}`); } } } let lastFileName = null; let currentFileRows = []; const processFileBatch = (filename, rows) => { const buffer = fileBuffers[filename]; if (buffer) { buffersToConcat.push(buffer); const segments = fileSegments[filename] || []; const fileDuration = buffer.duration; rows.forEach((row, i) => { let mStart = 0; let mEnd = 0; let qualityText = 'Auto-Matched'; if (segments.length >= rows.length) { const seg = segments[i]; mStart = seg.start; mEnd = seg.end; } else { const partDuration = fileDuration / rows.length; mStart = i * partDuration; mEnd = (i + 1) * partDuration; qualityText = 'Fallback-Split'; } newMarkers.push({ id: row.id, lockedText: { name: row.primary, secondary: row.secondary, previewFileName: row.targetFileName }, start: globalOffset + mStart, end: globalOffset + mEnd, duration: mEnd - mStart, formattedDuration: (mEnd - mStart).toFixed(3) + 's', qualityStatus: 'normal', qualityText: qualityText }); }); globalOffset += fileDuration; } else { rows.forEach(row => { newMarkers.push({ id: row.id, lockedText: { name: row.primary, secondary: row.secondary, previewFileName: row.targetFileName }, start: -1, end: -1, duration: 0, formattedDuration: 'N/A', qualityStatus: 'missing', qualityText: '缺音檔' }); }); } }; scriptData.forEach((row) => { const fname = row.sourceFileName; if (fname !== lastFileName) { if (lastFileName !== null || currentFileRows.length > 0) { processFileBatch(lastFileName, currentFileRows); } currentFileRows = [row]; lastFileName = fname; } else { currentFileRows.push(row); } }); if (currentFileRows.length > 0) { processFileBatch(lastFileName, currentFileRows); } if (buffersToConcat.length === 0 && newMarkers.every(m => m.qualityStatus === 'missing')) { alert("沒有成功匹配任何音檔，將只顯示文字列表。"); } const mergedBuffer = concatAudioBuffers(buffersToConcat, ctx); setAudioBuffer(mergedBuffer); setMarkers(newMarkers); setFileName(`Merged_Project`); setViewMode('splitter'); setEditMode('manual'); setScriptFlowMode(false); } catch (e) { console.error(e); setErrorMsg("合併失敗：" + e.message); } finally { setIsProcessing(false); } };
+            const handleMergeAndLoad = async () => { if (scriptData.length === 0) { alert("請先載入腳本"); return; } setIsProcessing(true); setErrorMsg(''); try { const ctx = await getAudioContext(); const buffersToConcat = []; const newMarkers = []; let globalOffset = 0; const fileBuffers = {}; const fileSegments = {}; const neededFiles = [...new Set(scriptData.map(r => r.sourceFileName).filter(Boolean))]; for (const filename of neededFiles) { const file = stagedFiles[filename]; if (file) { try { const ab = await file.arrayBuffer(); const decoded = await ctx.decodeAudioData(ab); fileBuffers[filename] = decoded; fileSegments[filename] = getSegmentsInFile(decoded.getChannelData(0), decoded.sampleRate, threshold, minSilenceDuration, minSpeechDuration); } catch (err) { console.warn(`Failed to decode ${filename}`); } } } let lastFileName = null; let currentFileRows = []; const processFileBatch = (filename, rows) => { const buffer = fileBuffers[filename]; if (buffer) { buffersToConcat.push(buffer); const segments = fileSegments[filename] || []; const fileDuration = buffer.duration; rows.forEach((row, i) => { let mStart = 0; let mEnd = 0; let qualityText = 'Auto-Matched'; if (segments.length >= rows.length) { const seg = segments[i]; mStart = seg.start; mEnd = seg.end; } else { const partDuration = fileDuration / rows.length; mStart = i * partDuration; mEnd = (i + 1) * partDuration; qualityText = 'Fallback-Split'; } newMarkers.push({ id: row.id, lockedText: { name: row.primary, secondary: row.secondary, previewFileName: row.targetFileName }, start: globalOffset + mStart, end: globalOffset + mEnd, duration: mEnd - mStart, formattedDuration: (mEnd - mStart).toFixed(3) + 's', qualityStatus: 'normal', qualityText: qualityText, isDenoised: false, denoiseParams: { highPassFreq: 100, highShelfGain: -10, peakingGain: 3 } }); }); globalOffset += fileDuration; } else { rows.forEach(row => { newMarkers.push({ id: row.id, lockedText: { name: row.primary, secondary: row.secondary, previewFileName: row.targetFileName }, start: -1, end: -1, duration: 0, formattedDuration: 'N/A', qualityStatus: 'missing', qualityText: '缺音檔', isDenoised: false }); }); } }; scriptData.forEach((row) => { const fname = row.sourceFileName; if (fname !== lastFileName) { if (lastFileName !== null || currentFileRows.length > 0) { processFileBatch(lastFileName, currentFileRows); } currentFileRows = [row]; lastFileName = fname; } else { currentFileRows.push(row); } }); if (currentFileRows.length > 0) { processFileBatch(lastFileName, currentFileRows); } if (buffersToConcat.length === 0 && newMarkers.every(m => m.qualityStatus === 'missing')) { alert("沒有成功匹配任何音檔，將只顯示文字列表。"); } const mergedBuffer = concatAudioBuffers(buffersToConcat, ctx); setAudioBuffer(mergedBuffer); setMarkers(newMarkers); setFileName(`Merged_Project`); setViewMode('splitter'); setEditMode('manual'); setScriptFlowMode(false); } catch (e) { console.error(e); setErrorMsg("合併失敗：" + e.message); } finally { setIsProcessing(false); } };
             const handleSingleFileUpload = async (e) => { const file = e.target.files[0]; if (!file) return; setIsProcessing(true); setFileName(file.name); try { const ctx = await getAudioContext(); const arrayBuffer = await file.arrayBuffer(); const decodedBuffer = await ctx.decodeAudioData(arrayBuffer); setAudioBuffer(decodedBuffer); setCurrentTime(0); setMarkers([]); setEditMode('auto'); } catch (error) { setErrorMsg("音訊讀取失敗"); } finally { setIsProcessing(false); e.target.value = null; } };
             const deleteMarker = (idToDelete) => { setEditMode('manual'); setMarkers(prev => prev.filter(m => m.id !== idToDelete)); };
             const encodeWAV = (samples, numChannels, sampleRate) => { const buffer = new ArrayBuffer(44 + samples.length * 2); const view = new DataView(buffer); const writeString = (view, offset, string) => { for (let i = 0; i < string.length; i++) { view.setUint8(offset + i, string.charCodeAt(i)); } }; writeString(view, 0, 'RIFF'); view.setUint32(4, 36 + samples.length * 2, true); writeString(view, 8, 'WAVE'); writeString(view, 12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, numChannels, true); view.setUint32(24, sampleRate, true); view.setUint32(28, sampleRate * numChannels * 2, true); view.setUint16(32, numChannels * 2, true); view.setUint16(34, 16, true); writeString(view, 36, 'data'); view.setUint32(40, samples.length * 2, true); for (let i = 0; i < samples.length; i++) { let s = Math.max(-1, Math.min(1, samples[i])); s = s < 0 ? s * 0x8000 : s * 0x7FFF; view.setInt16(44 + i * 2, s, true); } return new Blob([view], { type: 'audio/wav' }); };
-            const getAudioSegmentBlob = (start, end) => { if (!audioBuffer) return null; const sampleRate = audioBuffer.sampleRate; const startSample = Math.floor(start * sampleRate); const endSample = Math.floor(end * sampleRate); const length = endSample - startSample; if (length <= 0) return null; const numChannels = audioBuffer.numberOfChannels; let interleaved; if (numChannels === 2) { const left = audioBuffer.getChannelData(0); const right = audioBuffer.getChannelData(1); interleaved = new Float32Array(length * 2); for (let i = 0; i < length; i++) { interleaved[i * 2] = left[startSample + i]; interleaved[i * 2 + 1] = right[startSample + i]; } } else { const channel = audioBuffer.getChannelData(0); interleaved = channel.slice(startSample, startSample + length); } return encodeWAV(interleaved, numChannels, sampleRate); };
+            
+            const normalizeAudioData = (channelData, targetDB) => {
+                let sumSquares = 0; for (let i = 0; i < channelData.length; i++) { sumSquares += channelData[i] * channelData[i]; }
+                const rms = Math.sqrt(sumSquares / channelData.length);
+                if (rms < 0.0001) return channelData; 
+                const currentDB = 20 * Math.log10(rms);
+                const gainDB = targetDB - currentDB;
+                const gain = Math.pow(10, gainDB / 20);
+                const newData = new Float32Array(channelData.length);
+                for (let i = 0; i < channelData.length; i++) {
+                    let val = channelData[i] * gain;
+                    if (val > 1.0) val = 1.0; if (val < -1.0) val = -1.0;
+                    newData[i] = val;
+                }
+                return newData;
+            };
+
+            // Denoise/Enhance Filter Logic (Offline)
+            const processAudioSegment = async (rawData, sampleRate, options) => {
+                const offlineCtx = new OfflineAudioContext(1, rawData.length, sampleRate);
+                const source = offlineCtx.createBufferSource();
+                const buffer = offlineCtx.createBuffer(1, rawData.length, sampleRate);
+                buffer.getChannelData(0).set(rawData);
+                source.buffer = buffer;
+
+                const highPass = offlineCtx.createBiquadFilter();
+                highPass.type = 'highpass';
+                highPass.frequency.value = options.highPassFreq; 
+
+                const deHiss = offlineCtx.createBiquadFilter();
+                deHiss.type = 'highshelf';
+                deHiss.frequency.value = 8000;
+                deHiss.gain.value = options.highShelfGain; 
+
+                const presence = offlineCtx.createBiquadFilter();
+                presence.type = 'peaking';
+                presence.frequency.value = 2500;
+                presence.Q.value = 1.0;
+                presence.gain.value = options.peakingGain; 
+
+                source.connect(highPass);
+                highPass.connect(deHiss);
+                deHiss.connect(presence);
+                presence.connect(offlineCtx.destination);
+
+                source.start();
+                const rendered = await offlineCtx.startRendering();
+                return rendered.getChannelData(0);
+            };
+
+            const getAudioSegmentBlobAsync = async (start, end, denoiseParams) => { 
+                if (!audioBuffer) return null; 
+                
+                const pad = 0.1;
+                const pStart = Math.max(0, start - pad);
+                const pEnd = Math.min(audioBuffer.duration, end + pad);
+
+                const sampleRate = audioBuffer.sampleRate; 
+                const startSample = Math.floor(pStart * sampleRate); 
+                const endSample = Math.floor(pEnd * sampleRate); 
+                const length = endSample - startSample; 
+                if (length <= 0) return null; 
+                const numChannels = audioBuffer.numberOfChannels; 
+                
+                let processedChannels = [];
+                for (let c = 0; c < numChannels; c++) {
+                    let rawData = audioBuffer.getChannelData(c).slice(startSample, startSample + length);
+                    
+                    // Apply Denoise if requested
+                    if (denoiseParams) {
+                        try {
+                            const opts = {
+                                highPassFreq: denoiseParams.highPassFreq,
+                                highShelfGain: denoiseParams.highShelfGain,
+                                peakingGain: denoiseParams.peakingGain
+                            };
+                            rawData = await processAudioSegment(rawData, sampleRate, opts);
+                        } catch(e) { console.error("Denoise failed", e); }
+                    }
+
+                    // Apply Normalize
+                    if (doNormalize) {
+                        processedChannels.push(normalizeAudioData(rawData, targetLoudness));
+                    } else {
+                        processedChannels.push(rawData);
+                    }
+                }
+
+                let interleaved; 
+                if (numChannels === 2) { 
+                    interleaved = new Float32Array(length * 2); 
+                    for (let i = 0; i < length; i++) { 
+                        interleaved[i * 2] = processedChannels[0][i]; 
+                        interleaved[i * 2 + 1] = processedChannels[1][i]; 
+                    } 
+                } else { 
+                    interleaved = processedChannels[0]; 
+                } 
+                return encodeWAV(interleaved, numChannels, sampleRate); 
+            };
+
+            const playMarkerByIndex = async (index) => {
+                if (index < 0 || index >= markers.length) return;
+                const marker = markers[index];
+                if (marker.qualityStatus === 'missing') return;
+                
+                if (marker.isDenoised) {
+                    stopPlayback();
+                    const wavBlob = await getAudioSegmentBlobAsync(marker.start, marker.end, marker.denoiseParams);
+                    const url = URL.createObjectURL(wavBlob);
+                    const audio = new Audio(url);
+                    audio.play();
+                    audioSourceRef.current = { stop: () => { audio.pause(); } }; 
+                } else {
+                    playRange(marker.start, marker.duration);
+                }
+                
+                const resolved = resolveMarkerData(marker, index);
+                setActiveDisplay(resolved);
+                setActiveMarkerIndex(index);
+            };
+
             const stopPlayback = () => { if (audioSourceRef.current) { audioSourceRef.current.stop(); audioSourceRef.current = null; } cancelAnimationFrame(animationRef.current); setIsPlaying(false); };
             const togglePlay = async () => { if (!audioBuffer) return; const ctx = await getAudioContext(); if (isPlaying) { stopPlayback(); } else { const source = ctx.createBufferSource(); source.buffer = audioBuffer; source.connect(ctx.destination); let startOffset = currentTime >= audioBuffer.duration ? 0 : currentTime; if (startOffset === 0) setCurrentTime(0); source.start(0, startOffset); startTimeRef.current = ctx.currentTime - startOffset; audioSourceRef.current = source; setIsPlaying(true); const drawLoop = () => { const now = ctx.currentTime - startTimeRef.current; if (now >= audioBuffer.duration) { setIsPlaying(false); setCurrentTime(0); return; } setCurrentTime(now); animationRef.current = requestAnimationFrame(drawLoop); }; drawLoop(); } };
             const playRange = async (start, duration) => { if (!audioBuffer) return; const ctx = await getAudioContext(); if (isPlaying) { audioSourceRef.current?.stop(); cancelAnimationFrame(animationRef.current); } const source = ctx.createBufferSource(); source.buffer = audioBuffer; source.connect(ctx.destination); source.start(0, start, duration); setCurrentTime(start); setIsPlaying(true); startTimeRef.current = ctx.currentTime - start; if (containerRef.current && canvasRef.current) { const width = canvasRef.current.width; const scrollPos = (start / audioBuffer.duration) * width - (containerRef.current.clientWidth / 2); containerRef.current.scrollTo({ left: scrollPos, behavior: 'smooth' }); } setTimeout(() => { setIsPlaying(false); }, duration * 1000); audioSourceRef.current = source; const drawLoop = () => { const now = ctx.currentTime - startTimeRef.current; if (now >= start + duration) return; setCurrentTime(now); animationRef.current = requestAnimationFrame(drawLoop); }; drawLoop(); };
             const playBatchFile = (sourceFileName) => { const file = stagedFiles[sourceFileName]; if (!file) return; if (batchPlayingId === sourceFileName && !batchAudioRef.current.paused) { batchAudioRef.current.pause(); setIsPlaying(false); return; } const url = URL.createObjectURL(file); batchAudioRef.current.src = url; batchAudioRef.current.play(); setBatchPlayingId(sourceFileName); setIsPlaying(true); batchAudioRef.current.onended = () => { setBatchPlayingId(null); setIsPlaying(false); }; batchAudioRef.current.onpause = () => setIsPlaying(false); batchAudioRef.current.onplay = () => setIsPlaying(true); };
-            const playMarkerByIndex = (index) => { if (index < 0 || index >= markers.length) return; const marker = markers[index]; if (marker.qualityStatus === 'missing') return; playRange(marker.start, marker.duration); const resolved = resolveMarkerData(marker, index); setActiveDisplay(resolved); setActiveMarkerIndex(index); };
             const playPreviousSegment = () => { if (markers.length === 0) return; let newIndex = activeMarkerIndex !== null ? activeMarkerIndex - 1 : 0; while (newIndex >= 0 && markers[newIndex].qualityStatus === 'missing') { newIndex--; } if (newIndex >= 0) { playMarkerByIndex(newIndex); } };
             const playNextSegment = () => { if (markers.length === 0) return; let newIndex = activeMarkerIndex !== null ? activeMarkerIndex + 1 : 0; while (newIndex < markers.length && markers[newIndex].qualityStatus === 'missing') { newIndex++; } if (newIndex < markers.length) { playMarkerByIndex(newIndex); } };
             const resolveMarkerData = (marker, index) => { if (marker.lockedText) return marker.lockedText; if (scriptData.length > 0 && scriptData[index]) { const row = scriptData[index]; return { name: row.primary, secondary: row.secondary, previewFileName: row.targetFileName }; } const fallbackName = speakerMode ? (index % 2 === 0 ? "Speaker A" : "Speaker B") : `Marker ${index + 1}`; return { name: marker.name || fallbackName, secondary: marker.secondary || "", previewFileName: marker.previewFileName || `${(index+1).toString().padStart(2, '0')}_${fallbackName.replace(/\s+/g, '_')}` }; };
-            const downloadSegment = (marker, index) => { if (marker.qualityStatus === 'missing') return; const resolved = resolveMarkerData(marker, index); const wavBlob = getAudioSegmentBlob(marker.start, marker.end); if (!wavBlob) return; const url = URL.createObjectURL(wavBlob); const link = document.createElement('a'); link.href = url; let downloadName = resolved.previewFileName; if (!downloadName.toLowerCase().endsWith('.wav')) downloadName += '.wav'; link.setAttribute('download', downloadName); document.body.appendChild(link); link.click(); document.body.removeChild(link); };
-            const downloadAllZip = async () => { if (!jsZipRef.current || markers.length === 0) return; setIsZipping(true); const zip = new jsZipRef.current(); const folderName = fileName.split('.')[0] + "_sliced"; const folder = zip.folder(folderName); let count = 0; markers.forEach((marker, index) => { if (marker.qualityStatus === 'missing') return; const resolved = resolveMarkerData(marker, index); const blob = getAudioSegmentBlob(marker.start, marker.end); if (blob) { let name = resolved.previewFileName; if (!name.toLowerCase().endsWith('.wav')) name += '.wav'; folder.file(name, blob); count++; } }); if (count === 0) { alert("沒有可下載的音檔"); setIsZipping(false); return; } try { const content = await zip.generateAsync({ type: "blob" }); const url = URL.createObjectURL(content); const link = document.createElement('a'); link.href = url; link.setAttribute('download', `${folderName}.zip`); document.body.appendChild(link); link.click(); document.body.removeChild(link); } catch (err) { alert("打包失敗"); } finally { setIsZipping(false); } };
+            
+            const downloadSegment = async (marker, index) => { 
+                if (marker.qualityStatus === 'missing') return; 
+                const resolved = resolveMarkerData(marker, index); 
+                const wavBlob = await getAudioSegmentBlobAsync(marker.start, marker.end, marker.isDenoised ? marker.denoiseParams : null); 
+                if (!wavBlob) return; 
+                const url = URL.createObjectURL(wavBlob); 
+                const link = document.createElement('a'); link.href = url; 
+                let downloadName = resolved.previewFileName; if (!downloadName.toLowerCase().endsWith('.wav')) downloadName += '.wav'; 
+                link.setAttribute('download', downloadName); document.body.appendChild(link); link.click(); document.body.removeChild(link); 
+            };
+            
+            const downloadAllZip = async () => { 
+                if (!jsZipRef.current || markers.length === 0) return; 
+                setIsZipping(true); 
+                const zip = new jsZipRef.current(); 
+                const folderName = fileName.split('.')[0] + "_sliced"; 
+                const folder = zip.folder(folderName); 
+                let count = 0; 
+                for (let i = 0; i < markers.length; i++) {
+                    const marker = markers[i];
+                    if (marker.qualityStatus === 'missing') continue;
+                    const resolved = resolveMarkerData(marker, i); 
+                    const blob = await getAudioSegmentBlobAsync(marker.start, marker.end, marker.isDenoised ? marker.denoiseParams : null);
+                    if (blob) { 
+                        let name = resolved.previewFileName; 
+                        if (!name.toLowerCase().endsWith('.wav')) name += '.wav'; 
+                        folder.file(name, blob); 
+                        count++; 
+                    }
+                }
+                if (count === 0) { alert("沒有可下載的音檔"); setIsZipping(false); return; } 
+                try { 
+                    const content = await zip.generateAsync({ type: "blob" }); 
+                    const url = URL.createObjectURL(content); 
+                    const link = document.createElement('a'); link.href = url; link.setAttribute('download', `${folderName}.zip`); document.body.appendChild(link); link.click(); document.body.removeChild(link); 
+                } catch (err) { alert("打包失敗"); } finally { setIsZipping(false); } 
+            };
+            
             const exportCSV = () => { if (markers.length === 0) return; let content = "Name\tStart\tDuration\tTime Format\tType\tDescription\r\n"; markers.forEach((marker, index) => { if (marker.qualityStatus === 'missing') return; const resolved = resolveMarkerData(marker, index); const start = marker.start.toFixed(3); const duration = exportAsRange ? marker.duration.toFixed(3) : "0.000"; const safeName = resolved.name.replace(/\t/g, " "); const desc = resolved.secondary ? resolved.secondary.replace(/\t/g, " ") : resolved.previewFileName; content += `${safeName}\t${start}\t${duration}\tdecimal\tCue\t${desc}\r\n`; }); const blob = new Blob(["\uFEFF" + content], { type: 'text/csv;charset=utf-8;' }); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.setAttribute('download', `${fileName.split('.')[0]}_markers.csv`); document.body.appendChild(link); link.click(); document.body.removeChild(link); };
-            const detectMarkers = useMemo(() => { if (!audioBuffer) return []; const rawData = audioBuffer.getChannelData(0); const sampleRate = audioBuffer.sampleRate; const bufferLength = rawData.length; const thresholdLinear = Math.pow(10, threshold / 20); const minSilenceSamples = minSilenceDuration * sampleRate; const minSpeechSamples = minSpeechDuration * sampleRate; const paddingSamples = padding * sampleRate; let isSpeaking = false; let speechStart = 0; let tempMarkers = []; let silenceCount = 0; const step = 100; for (let i = 0; i < bufferLength; i += step) { const amplitude = Math.abs(rawData[i]); if (amplitude > thresholdLinear) { if (!isSpeaking) { isSpeaking = true; speechStart = i; } silenceCount = 0; } else { if (isSpeaking) { silenceCount += step; if (silenceCount > minSilenceSamples) { const speechEnd = i - silenceCount; if (speechEnd - speechStart > minSpeechSamples) { let startSample = Math.max(0, speechStart - paddingSamples); let endSample = Math.min(bufferLength, speechEnd + paddingSamples); tempMarkers.push({ rawStart: startSample / sampleRate, rawDuration: (endSample - startSample) / sampleRate, rawEnd: endSample / sampleRate }); } isSpeaking = false; } } } } return tempMarkers.map((m, index) => ({ id: index + 1, start: m.rawStart, end: m.rawEnd, duration: m.rawDuration, formattedStart: formatTime(m.rawStart), formattedDuration: m.rawDuration.toFixed(3) + 's', qualityStatus: 'normal', qualityText: 'Auto', })); }, [audioBuffer, threshold, minSilenceDuration, minSpeechDuration, padding, speakerMode, scriptData]);
+            const detectMarkers = useMemo(() => { if (!audioBuffer) return []; const rawData = audioBuffer.getChannelData(0); const sampleRate = audioBuffer.sampleRate; const bufferLength = rawData.length; const thresholdLinear = Math.pow(10, threshold / 20); const minSilenceSamples = minSilenceDuration * sampleRate; const minSpeechSamples = minSpeechDuration * sampleRate; const paddingSamples = padding * sampleRate; let isSpeaking = false; let speechStart = 0; let tempMarkers = []; let silenceCount = 0; const step = 100; for (let i = 0; i < bufferLength; i += step) { const amplitude = Math.abs(rawData[i]); if (amplitude > thresholdLinear) { if (!isSpeaking) { isSpeaking = true; speechStart = i; } silenceCount = 0; } else { if (isSpeaking) { silenceCount += step; if (silenceCount > minSilenceSamples) { const speechEnd = i - silenceCount; if (speechEnd - speechStart > minSpeechSamples) { let startSample = Math.max(0, speechStart - paddingSamples); let endSample = Math.min(bufferLength, speechEnd + paddingSamples); tempMarkers.push({ rawStart: startSample / sampleRate, rawDuration: (endSample - startSample) / sampleRate, rawEnd: endSample / sampleRate }); } isSpeaking = false; } } } } return tempMarkers.map((m, index) => ({ id: index + 1, start: m.rawStart, end: m.rawEnd, duration: m.rawDuration, formattedStart: formatTime(m.rawStart), formattedDuration: m.rawDuration.toFixed(3) + 's', qualityStatus: 'normal', qualityText: 'Auto', isDenoised: false, denoiseParams: { highPassFreq: 100, highShelfGain: -10, peakingGain: 3 } })); }, [audioBuffer, threshold, minSilenceDuration, minSpeechDuration, padding, speakerMode, scriptData]);
             useEffect(() => { if (viewMode === 'splitter' && editMode === 'auto' && detectMarkers.length > 0) { setMarkers(detectMarkers); } }, [detectMarkers, viewMode, editMode]);
             const handleSliderChange = (setter) => (e) => { setEditMode('auto'); setter(Number(e.target.value)); };
             function formatTime(seconds) { if (seconds < 0) return "--:--:--"; const h = Math.floor(seconds / 3600); const m = Math.floor((seconds % 3600) / 60); const s = Math.floor(seconds % 60); const ms = Math.floor((seconds % 1) * 1000); return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')}`; }
             const getCanvasX = (e) => { if (!canvasRef.current) return 0; const rect = canvasRef.current.getBoundingClientRect(); const scaleX = canvasRef.current.width / rect.width; return (e.clientX - rect.left) * scaleX; };
             const handleCanvasMouseMove = (e) => { if (!audioBuffer) return; const x = getCanvasX(e); const width = canvasRef.current.width; const time = (x / width) * audioBuffer.duration; if (dragTarget) { if (dragTarget.type === 'body') { const dx = Math.abs(x - clickStartPosRef.current); if (dx > 5) dragMovedRef.current = true; } if (dragTarget.type === 'minimap') { const minimapWidth = minimapRef.current.width; const ratio = x / minimapWidth; const newScroll = ratio * containerRef.current.scrollWidth - containerRef.current.clientWidth / 2; containerRef.current.scrollLeft = newScroll; return; } if (dragTarget.type === 'create') { } if (dragTarget.type === 'body' && !dragMovedRef.current) return; const { id, type, offset } = dragTarget; setMarkers(prev => prev.map(m => { if (m.id !== id) return m; let newStart = m.start; let newEnd = m.end; const duration = m.end - m.start; if (type === 'start') { newStart = Math.max(0, Math.min(time, m.end - 0.1)); newEnd = m.end; } else if (type === 'end') { newEnd = Math.min(audioBuffer.duration, Math.max(time, m.start + 0.1)); newStart = m.start; } else if (type === 'body') { newStart = time - offset; if (newStart < 0) newStart = 0; if (newStart + duration > audioBuffer.duration) newStart = audioBuffer.duration - duration; newEnd = newStart + duration; } const newDuration = newEnd - newStart; return { ...m, start: newStart, end: newEnd, duration: newDuration, formattedStart: formatTime(newStart), formattedDuration: newDuration.toFixed(3) + 's', }; })); return; } const hoverThresholdPx = 12 * (canvasRef.current.width / canvasRef.current.getBoundingClientRect().width); let target = null; let foundEdge = false; for (const m of markers) { if (m.qualityStatus === 'missing') continue; const startX = (m.start / audioBuffer.duration) * width; const endX = (m.end / audioBuffer.duration) * width; if (Math.abs(x - startX) < hoverThresholdPx) { target = { id: m.id, type: 'start' }; foundEdge = true; break; } if (Math.abs(x - endX) < hoverThresholdPx) { target = { id: m.id, type: 'end' }; foundEdge = true; break; } } if (!foundEdge) { for (const m of markers) { if (m.qualityStatus === 'missing') continue; const startX = (m.start / audioBuffer.duration) * width; const endX = (m.end / audioBuffer.duration) * width; if (x > startX && x < endX) { target = { id: m.id, type: 'body' }; break; } } } setHoverTarget(target); };
             const handleCanvasMouseDown = (e) => { if (!audioBuffer) return; const x = getCanvasX(e); const width = canvasRef.current.width; const time = (x / width) * audioBuffer.duration; if (hoverTarget) { let offset = 0; if (hoverTarget.type === 'body') { const marker = markers.find(m => m.id === hoverTarget.id); if (marker) offset = time - marker.start; } clickStartPosRef.current = x; dragMovedRef.current = false; setEditMode('manual'); setDragTarget({ ...hoverTarget, offset }); setIsPlaying(false); } else { setEditMode('manual'); setDragTarget({ type: 'create', startX: x, startTime: time }); setCurrentTime(time); } };
-            const handleCanvasMouseUp = (e) => { if (dragTarget?.type === 'body' && !dragMovedRef.current) { const index = markers.findIndex(m => m.id === dragTarget.id); if (index !== -1) { playMarkerByIndex(index); } } if (dragTarget?.type === 'create') { const endX = getCanvasX(e); const width = canvasRef.current.width; const endTime = (endX / width) * audioBuffer.duration; if (Math.abs(endX - dragTarget.startX) > 10) { const start = Math.min(dragTarget.startTime, endTime); const end = Math.max(dragTarget.startTime, endTime); const newId = markers.length > 0 ? Math.max(...markers.map(m => m.id)) + 1 : 1; const newMarker = { id: newId, name: `New Marker ${newId}`, secondary: '', previewFileName: `new_marker_${newId}`, start: start, end: end, duration: end - start, formattedDuration: (end - start).toFixed(3) + 's', qualityStatus: 'normal', qualityText: 'Manual' }; setMarkers(prev => [...prev, newMarker].sort((a, b) => a.start - b.start)); } } setDragTarget(null); };
+            const handleCanvasMouseUp = (e) => { if (dragTarget?.type === 'body' && !dragMovedRef.current) { const index = markers.findIndex(m => m.id === dragTarget.id); if (index !== -1) { playMarkerByIndex(index); } } if (dragTarget?.type === 'create') { const endX = getCanvasX(e); const width = canvasRef.current.width; const endTime = (endX / width) * audioBuffer.duration; if (Math.abs(endX - dragTarget.startX) > 10) { const start = Math.min(dragTarget.startTime, endTime); const end = Math.max(dragTarget.startTime, endTime); const newId = markers.length > 0 ? Math.max(...markers.map(m => m.id)) + 1 : 1; const newMarker = { id: newId, name: `New Marker ${newId}`, secondary: '', previewFileName: `new_marker_${newId}`, start: start, end: end, duration: end - start, formattedDuration: (end - start).toFixed(3) + 's', qualityStatus: 'normal', qualityText: 'Manual', isDenoised: false, denoiseParams: { highPassFreq: 100, highShelfGain: -10, peakingGain: 3 } }; setMarkers(prev => [...prev, newMarker].sort((a, b) => a.start - b.start)); } } setDragTarget(null); };
             const handleCanvasMouseLeave = () => { setDragTarget(null); setHoverTarget(null); };
             const handleMinimapMouseDown = (e) => { if (!audioBuffer || !minimapRef.current) return; const rect = minimapRef.current.getBoundingClientRect(); const x = e.clientX - rect.left; const width = minimapRef.current.width; const ratio = x / width; if (containerRef.current) { const scrollWidth = containerRef.current.scrollWidth; const clientWidth = containerRef.current.clientWidth; const newScroll = ratio * scrollWidth - clientWidth / 2; containerRef.current.scrollLeft = newScroll; } setDragTarget({ type: 'minimap' }); };
             const handleMinimapMouseMove = (e) => { if (dragTarget?.type === 'minimap') { handleMinimapMouseDown(e); } };
             const handleContainerScroll = () => { if (containerRef.current) { setScrollLeft(containerRef.current.scrollLeft); } };
 
-            // Main Waveform Draw Logic - Handles drawing main waveform if visible
+            // Main Waveform Draw Logic
             useEffect(() => { if (!audioBuffer || !canvasRef.current) return; const canvas = canvasRef.current; const ctx = canvas.getContext('2d'); const baseWidth = containerRef.current ? containerRef.current.clientWidth : 800; const width = Math.floor(baseWidth * zoomLevel); const height = canvas.height; if (canvas.width !== width) canvas.width = width; ctx.clearRect(0, 0, width, height); ctx.fillStyle = '#1e293b'; ctx.fillRect(0, 0, width, height); const data = audioBuffer.getChannelData(0); const step = Math.ceil(data.length / width); const amp = height / 2; ctx.beginPath(); ctx.strokeStyle = '#60a5fa'; ctx.lineWidth = 1; for (let i = 0; i < width; i++) { let min = 1.0; let max = -1.0; const startIdx = Math.floor(i * step); for (let j = 0; j < step; j++) { const idx = startIdx + j; if (idx < data.length) { const datum = data[idx] * ampScale; if (datum < min) min = datum; if (datum > max) max = datum; } } if (min < -1) min = -1; if (max > 1) max = 1; if (min === 1.0 && max === -1.0) { min = 0; max = 0; } ctx.moveTo(i, (1 + min) * amp); ctx.lineTo(i, (1 + max) * amp); } ctx.stroke(); const thresholdLinear = Math.pow(10, threshold / 20) * ampScale; let visualThresh = Math.min(thresholdLinear, 1); const thresholdYTop = (1 - visualThresh) * amp; const thresholdYBot = (1 + visualThresh) * amp; ctx.beginPath(); ctx.strokeStyle = '#fbbf24'; ctx.setLineDash([5, 5]); ctx.moveTo(0, thresholdYTop); ctx.lineTo(width, thresholdYTop); ctx.moveTo(0, thresholdYBot); ctx.lineTo(width, thresholdYBot); ctx.stroke(); ctx.setLineDash([]); markers.forEach(marker => { if (marker.qualityStatus === 'missing') return; const startX = (marker.start / audioBuffer.duration) * width; const endX = (marker.end / audioBuffer.duration) * width; if (hoverTarget?.id === marker.id && hoverTarget?.type === 'body') { ctx.fillStyle = 'rgba(239, 68, 68, 0.4)'; } else { ctx.fillStyle = 'rgba(239, 68, 68, 0.2)'; } ctx.fillRect(startX, 0, endX - startX, height); ctx.lineWidth = 4; ctx.beginPath(); const isHoverStart = hoverTarget?.id === marker.id && hoverTarget?.type === 'start'; ctx.strokeStyle = isHoverStart ? '#ffffff' : 'rgba(239, 68, 68, 0.8)'; ctx.moveTo(startX, 0); ctx.lineTo(startX, height); ctx.stroke(); ctx.beginPath(); const isHoverEnd = hoverTarget?.id === marker.id && hoverTarget?.type === 'end'; ctx.strokeStyle = isHoverEnd ? '#ffffff' : 'rgba(239, 68, 68, 0.8)'; ctx.moveTo(endX, 0); ctx.lineTo(endX, height); ctx.stroke(); ctx.fillStyle = '#ef4444'; ctx.font = '12px sans-serif'; ctx.fillText(marker.id, startX + 5, 15); }); const playheadX = (currentTime / audioBuffer.duration) * width; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(playheadX, 0); ctx.lineTo(playheadX, height); ctx.stroke(); if (canvas) { if (dragTarget) { if (dragTarget.type === 'body') canvas.style.cursor = 'grabbing'; else if (dragTarget.type === 'create') canvas.style.cursor = 'crosshair'; else canvas.style.cursor = 'col-resize'; } else if (hoverTarget) { if (hoverTarget.type === 'body') canvas.style.cursor = 'grab'; else canvas.style.cursor = 'col-resize'; } else { canvas.style.cursor = 'default'; } } }, [audioBuffer, markers, threshold, currentTime, zoomLevel, ampScale, hoverTarget, dragTarget]);
 
             // Minimap Draw Logic
@@ -458,10 +673,21 @@
                         </div>
                         <div className="flex flex-wrap gap-3 w-full xl:w-auto items-center">
                             {!scriptFileName ? (
-                                <label className={`flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-600 transition px-4 py-2 rounded-lg cursor-pointer font-medium border border-slate-600`}>
-                                    <FileSpreadsheet size={18} className="text-green-400"/> <span className="text-sm">載入腳本</span>
-                                    <input type="file" accept=".csv,.txt" onChange={handleScriptUpload} className="hidden" />
-                                </label>
+                                <div className="flex gap-2">
+                                    <select 
+                                        value={csvEncoding} 
+                                        onChange={(e) => setCsvEncoding(e.target.value)}
+                                        className="bg-slate-700 text-xs px-2 rounded border border-slate-600 outline-none"
+                                        title="若文字亂碼，請切換此編碼重新載入"
+                                    >
+                                        <option value="utf-8">UTF-8</option>
+                                        <option value="big5">Big5</option>
+                                    </select>
+                                    <label className={`flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-600 transition px-4 py-2 rounded-lg cursor-pointer font-medium border border-slate-600`}>
+                                        <FileSpreadsheet size={18} className="text-green-400"/> <span className="text-sm">載入腳本</span>
+                                        <input type="file" accept=".csv,.txt" onChange={handleScriptUpload} className="hidden" />
+                                    </label>
+                                </div>
                             ) : (
                                 <div className="flex items-center gap-2 bg-emerald-900/30 border border-emerald-700/50 px-3 py-2 rounded-lg">
                                     <FileSpreadsheet size={16} className="text-emerald-400"/>
@@ -603,28 +829,32 @@
                                         <span className={`text-xs font-mono px-2 py-1 rounded ${scriptFlowMode ? 'bg-green-900 text-green-200' : 'bg-slate-900 text-slate-400'}`}>{scriptFlowMode ? "Flow ON" : "Locked"}</span>
                                     </button>
                                 </div>
+                                
+                                {/* Normalization Controls */}
+                                <div className="pt-4 border-t border-slate-700">
+                                    <div className="flex items-center gap-2 text-sm text-white font-semibold mb-2"><Volume2 size={16} /> 輸出設定 (全域)</div>
+                                    <label className="flex items-center justify-between cursor-pointer mb-2">
+                                        <span className="text-sm text-slate-300">音量平衡 (Normalize)</span>
+                                        <input type="checkbox" checked={doNormalize} onChange={(e) => setDoNormalize(e.target.checked)} className="w-4 h-4 rounded border-slate-500 text-purple-600 bg-slate-700"/>
+                                    </label>
+                                    {doNormalize && (
+                                        <div className="flex justify-between items-center bg-slate-900/50 p-2 rounded mb-2">
+                                            <span className="text-xs text-slate-400">目標音量 (dB)</span>
+                                            <input type="number" value={targetLoudness} onChange={(e) => setTargetLoudness(Number(e.target.value))} className="w-16 bg-slate-700 text-white text-xs px-2 py-1 rounded text-center" max="0" min="-60"/>
+                                        </div>
+                                    )}
+                                </div>
+
                                 <div className="bg-slate-900/50 p-3 rounded-lg text-xs text-slate-400 space-y-1"><div className="flex justify-between"><span>段落數：</span><span className="text-white font-mono">{markers.length}</span></div>{scriptData.length > 0 && <div className="flex justify-between text-emerald-400"><span>腳本行數：</span><span className="font-mono">{scriptData.length}</span></div>}</div>
                             </div>
                             <div className="lg:col-span-9 space-y-6">
-                                
-                                {/* LIST AREA */}
                                 <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden flex flex-col h-[700px]">
                                     <div className="p-4 border-b border-slate-700 flex justify-between items-center bg-slate-800 sticky top-0 z-10">
                                         <div className="flex items-center gap-2"><h3 className="font-semibold text-slate-200">切分列表 ({markers.length})</h3>{scriptData.length > 0 && <span className="text-xs bg-emerald-900 text-emerald-300 px-2 py-0.5 rounded">腳本模式</span>}</div>
                                         <div className="flex items-center gap-2">
-                                            {/* Global Transport in List Header */}
-                                            <div className="flex items-center bg-slate-700 rounded-lg p-0.5 mr-2">
-                                                <button onClick={playPreviousSegment} className="p-1.5 hover:bg-slate-600 rounded text-slate-300 hover:text-white transition" title="上一段"><SkipBack size={14} /></button>
-                                                <div className="w-px h-3 bg-slate-600 mx-0.5"></div>
-                                                <button onClick={stopPlayback} className="p-1.5 hover:bg-red-900/50 rounded text-slate-300 hover:text-red-300 transition" title="停止"><Square size={14} fill="currentColor"/></button>
-                                                <div className="w-px h-3 bg-slate-600 mx-0.5"></div>
-                                                <button onClick={togglePlay} className="p-1.5 hover:bg-slate-600 rounded text-slate-300 hover:text-white transition" title="播放/暫停">{isPlaying ? <Pause size={14}/> : <Play size={14}/>}</button>
-                                                <div className="w-px h-3 bg-slate-600 mx-0.5"></div>
-                                                <button onClick={playNextSegment} className="p-1.5 hover:bg-slate-600 rounded text-slate-300 hover:text-white transition" title="下一段"><SkipForward size={14} /></button>
-                                            </div>
-
+                                            <div className="flex items-center bg-slate-700 rounded-lg p-0.5 mr-2"><button onClick={playPreviousSegment} className="p-1.5 hover:bg-slate-600 rounded text-slate-300 hover:text-white transition" title="上一段"><SkipBack size={14} /></button><div className="w-px h-3 bg-slate-600 mx-0.5"></div><button onClick={stopPlayback} className="p-1.5 hover:bg-red-900/50 rounded text-slate-300 hover:text-red-300 transition" title="停止"><Square size={14} fill="currentColor"/></button><div className="w-px h-3 bg-slate-600 mx-0.5"></div><button onClick={togglePlay} className="p-1.5 hover:bg-slate-600 rounded text-slate-300 hover:text-white transition" title="播放/暫停">{isPlaying ? <Pause size={14}/> : <Play size={14}/>}</button><div className="w-px h-3 bg-slate-600 mx-0.5"></div><button onClick={playNextSegment} className="p-1.5 hover:bg-slate-600 rounded text-slate-300 hover:text-white transition" title="下一段"><SkipForward size={14} /></button></div>
                                             {missingCount > 0 && (<span className="flex items-center gap-1 text-xs text-red-400 bg-red-900/30 px-2 py-1 rounded border border-red-500/30"><AlertTriangle size={12} /> 有 {missingCount} 行缺少音檔</span>)}
-                                            <button onClick={() => { const t = currentTime || 0; setEditMode('manual'); const newId = markers.length > 0 ? Math.max(...markers.map(m=>m.id))+1 : 1; setMarkers(prev => [...prev, {id: newId, start: t, end: Math.min(t+1, audioBuffer?.duration||t+1), duration: 1, name: 'New', previewFileName: `new_${newId}`, qualityStatus: 'normal', qualityText: 'Manual'}].sort((a,b)=>a.start-b.start)); }} className="flex items-center gap-1 bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded text-xs font-bold transition"><Plus size={14}/> 新增段落</button>
+                                            <button onClick={() => { const t = currentTime || 0; setEditMode('manual'); const newId = markers.length > 0 ? Math.max(...markers.map(m=>m.id))+1 : 1; setMarkers(prev => [...prev, {id: newId, start: t, end: Math.min(t+1, audioBuffer?.duration||t+1), duration: 1, name: 'New', previewFileName: `new_${newId}`, qualityStatus: 'normal', qualityText: 'Manual', isDenoised: false, denoiseParams: { highPassFreq: 100, highShelfGain: -10, peakingGain: 3 } }].sort((a,b)=>a.start-b.start)); }} className="flex items-center gap-1 bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded text-xs font-bold transition"><Plus size={14}/> 新增段落</button>
                                         </div>
                                     </div>
                                     <div className="overflow-y-auto flex-1 p-2">
@@ -638,28 +868,91 @@
                                                 if (marker.recognizedText && resolved.secondary) sim = calculateSimilarity(marker.recognizedText, resolved.secondary);
                                                 const isActive = activeDisplay && activeDisplay.name === resolved.name && activeDisplay.secondary === resolved.secondary;
                                                 const isMissing = marker.qualityStatus === 'missing';
+                                                const showSettings = expandedDenoiseId === marker.id;
 
                                                 return (
-                                                <div key={marker.id} onClick={() => playMarkerByIndex(index)} className={`grid grid-cols-12 gap-4 items-center px-4 py-3 rounded-lg transition border border-transparent hover:border-slate-600 group ${isMissing ? 'bg-red-900/10 border-red-500/20' : isActive ? 'bg-blue-900/20 border-blue-500/30' : 'bg-slate-700/30 hover:bg-slate-700/60'}`}>
-                                                    <div className="col-span-1 font-mono text-slate-500">{scriptFlowMode ? index + 1 : marker.id}</div>
-                                                    <div className="col-span-4 min-w-0 flex flex-col gap-1.5">
-                                                        <div className={`font-medium truncate cursor-pointer ${isMissing ? 'text-slate-400' : 'text-slate-200'}`} title={resolved.name}>{resolved.name}</div>
-                                                        {resolved.secondary && <div className={`text-base font-mono font-medium break-all leading-snug ${isMissing ? 'text-red-400/50' : 'text-emerald-400'}`} title={resolved.secondary}>{resolved.secondary}</div>}
-                                                        <div className="flex items-center gap-2 text-xs font-mono text-orange-300/70 truncate">
-                                                            <span>{resolved.previewFileName}</span>
-                                                            <span className="text-slate-600">|</span>
-                                                            <span className="text-slate-400">{marker.formattedDuration}</span>
+                                                <div key={marker.id} onClick={() => playMarkerByIndex(index)} className={`rounded-lg transition border border-transparent hover:border-slate-600 group ${isMissing ? 'bg-red-900/10 border-red-500/20' : isActive ? 'bg-blue-900/20 border-blue-500/30' : 'bg-slate-700/30 hover:bg-slate-700/60'}`}>
+                                                    <div className="grid grid-cols-12 gap-4 items-center px-4 py-3">
+                                                        <div className="col-span-1 font-mono text-slate-500">{scriptFlowMode ? index + 1 : marker.id}</div>
+                                                        <div className="col-span-4 min-w-0 flex flex-col gap-1.5">
+                                                            <div className={`font-medium truncate cursor-pointer ${isMissing ? 'text-slate-400' : 'text-slate-200'}`} title={resolved.name}>{resolved.name}</div>
+                                                            {resolved.secondary && <div className={`text-base font-mono font-medium break-all leading-snug ${isMissing ? 'text-red-400/50' : 'text-emerald-400'}`} title={resolved.secondary}>{resolved.secondary}</div>}
+                                                            <div className="flex items-center gap-2 text-xs font-mono text-orange-300/70 truncate">
+                                                                <span>{resolved.previewFileName}</span>
+                                                                <span className="text-slate-600">|</span>
+                                                                <span className="text-slate-400">{marker.formattedDuration}</span>
+                                                            </div>
+                                                            {marker.recognizedText && <div className="flex items-start gap-1"><BrainCircuit size={10} className="text-purple-400 mt-0.5 shrink-0"/><div className="text-[10px] text-purple-300 italic truncate" title={marker.recognizedText}>"{marker.recognizedText}"</div></div>}
                                                         </div>
-                                                        {marker.recognizedText && <div className="flex items-start gap-1"><BrainCircuit size={10} className="text-purple-400 mt-0.5 shrink-0"/><div className="text-[10px] text-purple-300 italic truncate" title={marker.recognizedText}>"{marker.recognizedText}"</div></div>}
+                                                        <div className="col-span-5 flex justify-center h-16" onClick={(e) => e.stopPropagation()}>
+                                                            {!isMissing && <MiniWaveform marker={marker} audioBuffer={audioBuffer} onChange={handleMarkerUpdate} onPlay={() => playMarkerByIndex(index)} />}
+                                                        </div>
+                                                        <div className="col-span-2 flex justify-end gap-2 opacity-80 group-hover:opacity-100" onClick={(e) => e.stopPropagation()}>
+                                                            {!isMissing && (
+                                                                <div className="flex flex-col gap-1">
+                                                                    <div className="flex gap-1">
+                                                                        <button 
+                                                                            onClick={() => toggleMarkerDenoise(marker.id)} 
+                                                                            className={`flex items-center justify-center w-8 h-8 rounded transition ${marker.isDenoised ? 'bg-purple-600 text-white' : 'text-slate-300 bg-slate-600/50 hover:bg-slate-600'}`} 
+                                                                            title={marker.isDenoised ? "降噪已開啟" : "開啟降噪"}
+                                                                        >
+                                                                            <Wand size={14} />
+                                                                        </button>
+                                                                        {marker.isDenoised && (
+                                                                            <button 
+                                                                                onClick={() => setExpandedDenoiseId(showSettings ? null : marker.id)}
+                                                                                className={`flex items-center justify-center w-8 h-8 rounded transition ${showSettings ? 'bg-slate-500 text-white' : 'text-slate-300 bg-slate-600/50 hover:bg-slate-600'}`}
+                                                                                title="調整降噪參數"
+                                                                            >
+                                                                                <Sliders size={14} />
+                                                                            </button>
+                                                                        )}
+                                                                    </div>
+                                                                    <div className="flex gap-1">
+                                                                        <button onClick={() => { playRange(marker.start, marker.duration); setActiveDisplay(resolved); setActiveMarkerIndex(index); }} className="flex items-center justify-center w-8 h-8 text-slate-300 bg-slate-600/50 hover:bg-slate-600 hover:text-white rounded transition"><Play size={14} /></button>
+                                                                        <button onClick={() => downloadSegment(marker, index)} className="flex items-center justify-center w-8 h-8 text-blue-200 bg-blue-600/30 hover:bg-blue-600 hover:text-white rounded transition"><Download size={14} /></button>
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                            <button onClick={() => deleteMarker(marker.id)} className="flex items-center justify-center w-8 h-8 text-red-300 bg-red-600/20 hover:bg-red-600 hover:text-white rounded transition self-start" title="刪除標記"><Trash2 size={14} /></button>
+                                                        </div>
                                                     </div>
-                                                    <div className="col-span-5 flex justify-center h-16" onClick={(e) => e.stopPropagation()}>
-                                                        {!isMissing && <MiniWaveform marker={marker} audioBuffer={audioBuffer} onChange={handleMarkerUpdate} onPlay={() => playMarkerByIndex(index)} />}
-                                                    </div>
-                                                    <div className="col-span-2 flex justify-end gap-2 opacity-80 group-hover:opacity-100" onClick={(e) => e.stopPropagation()}>
-                                                        {!isMissing && <button onClick={() => { playRange(marker.start, marker.duration); setActiveDisplay(resolved); setActiveMarkerIndex(index); }} className="flex items-center justify-center w-8 h-8 text-slate-300 bg-slate-600/50 hover:bg-slate-600 hover:text-white rounded transition"><Play size={14} /></button>}
-                                                        {!isMissing && <button onClick={() => downloadSegment(marker, index)} className="flex items-center justify-center w-8 h-8 text-blue-200 bg-blue-600/30 hover:bg-blue-600 hover:text-white rounded transition"><Download size={14} /></button>}
-                                                        <button onClick={() => deleteMarker(marker.id)} className="flex items-center justify-center w-8 h-8 text-red-300 bg-red-600/20 hover:bg-red-600 hover:text-white rounded transition" title="刪除標記"><Trash2 size={14} /></button>
-                                                    </div>
+                                                    
+                                                    {/* Expanded Settings Panel */}
+                                                    {showSettings && marker.isDenoised && (
+                                                        <div className="px-4 pb-3 pt-0" onClick={(e) => e.stopPropagation()}>
+                                                            <div className="bg-slate-900/80 rounded p-3 text-xs border border-purple-500/30 grid grid-cols-3 gap-4 relative">
+                                                                <div className="absolute top-1 right-1"><button onClick={() => setExpandedDenoiseId(null)} className="text-slate-500 hover:text-white"><X size={12}/></button></div>
+                                                                <div className="space-y-1">
+                                                                    <div className="flex justify-between text-slate-400"><span>低頻切除 (Low Cut)</span><span className="text-purple-300">{marker.denoiseParams?.highPassFreq} Hz</span></div>
+                                                                    <input 
+                                                                        type="range" min="0" max="300" step="10" 
+                                                                        value={marker.denoiseParams?.highPassFreq || 100} 
+                                                                        onChange={(e) => updateMarkerDenoiseParams(marker.id, { highPassFreq: Number(e.target.value) })}
+                                                                        className="w-full h-1 bg-slate-600 rounded-lg accent-purple-500"
+                                                                    />
+                                                                </div>
+                                                                <div className="space-y-1">
+                                                                    <div className="flex justify-between text-slate-400"><span>高頻降噪 (De-Hiss)</span><span className="text-purple-300">{marker.denoiseParams?.highShelfGain} dB</span></div>
+                                                                    <input 
+                                                                        type="range" min="-40" max="0" step="1" 
+                                                                        value={marker.denoiseParams?.highShelfGain || -10} 
+                                                                        onChange={(e) => updateMarkerDenoiseParams(marker.id, { highShelfGain: Number(e.target.value) })}
+                                                                        className="w-full h-1 bg-slate-600 rounded-lg accent-purple-500"
+                                                                    />
+                                                                </div>
+                                                                <div className="space-y-1">
+                                                                    <div className="flex justify-between text-slate-400"><span>人聲增強 (Presence)</span><span className="text-purple-300">+{marker.denoiseParams?.peakingGain} dB</span></div>
+                                                                    <input 
+                                                                        type="range" min="0" max="10" step="0.5" 
+                                                                        value={marker.denoiseParams?.peakingGain || 3} 
+                                                                        onChange={(e) => updateMarkerDenoiseParams(marker.id, { peakingGain: Number(e.target.value) })}
+                                                                        className="w-full h-1 bg-slate-600 rounded-lg accent-purple-500"
+                                                                    />
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             )})}
                                         </div>
