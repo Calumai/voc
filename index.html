@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <titlev>小寶貝6.0</title>
+    <title>小寶貝7.0</title>
     
     <!-- 載入 Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -45,7 +45,7 @@
     <script type="text/babel" data-type="module">
         import React, { useState, useRef, useEffect, useMemo, useCallback } from 'https://esm.sh/react@18.2.0';
         import ReactDOM from 'https://esm.sh/react-dom@18.2.0/client';
-        import { Upload, Download, Settings, Play, Pause, RefreshCw, Mic, Users, AlertCircle, FileAudio, Scissors, FileSpreadsheet, ZoomIn, Activity, Package, Trash2, Gauge, BrainCircuit, Wand2, Layers, CheckCircle2, XCircle, FileMusic, ArrowRight, Merge, Link2, Link2Off, Move, Plus, MousePointer2, MessageSquare, AlertTriangle, SkipBack, SkipForward, Square, Eye, EyeOff, Volume2, Sliders, X, Flag, FileText, Wand, PenTool, ClipboardPaste, ChevronDown, ListChecks, FileOutput } from 'https://esm.sh/lucide-react@0.294.0?deps=react@18.2.0';
+        import { Upload, Download, Settings, Play, Pause, RefreshCw, Mic, Users, AlertCircle, FileAudio, Scissors, FileSpreadsheet, ZoomIn, Activity, Package, Trash2, Gauge, BrainCircuit, Wand2, Layers, CheckCircle2, XCircle, FileMusic, ArrowRight, Merge, Link2, Link2Off, Move, Plus, MousePointer2, MessageSquare, AlertTriangle, SkipBack, SkipForward, Square, Eye, EyeOff, Volume2, Sliders, X, Flag, FileText, Wand, PenTool, ClipboardPaste, ChevronDown, ListChecks, FileOutput, BarChart2, Info } from 'https://esm.sh/lucide-react@0.294.0?deps=react@18.2.0';
 
         // Web Worker for Transformers.js (AI)
         const workerScript = `
@@ -319,6 +319,11 @@
             const [qcAudioFiles, setQcAudioFiles] = useState({}); 
             const [currentlyPlayingQcId, setCurrentlyPlayingQcId] = useState(null);
 
+            // Loudness Analyzer State
+            // CHANGED: Support array of results for batch analysis
+            const [analyzerResults, setAnalyzerResults] = useState([]);
+            const [isAnalyzing, setIsAnalyzing] = useState(false);
+
             const [zoomLevel, setZoomLevel] = useState(1);
             const [ampScale, setAmpScale] = useState(1);
             const [scrollLeft, setScrollLeft] = useState(0); 
@@ -451,7 +456,7 @@
             const deleteMarker = (idToDelete) => { setEditMode('manual'); setMarkers(prev => prev.filter(m => m.id !== idToDelete)); };
             const encodeWAV = (samples, numChannels, sampleRate) => { const buffer = new ArrayBuffer(44 + samples.length * 2); const view = new DataView(buffer); const writeString = (view, offset, string) => { for (let i = 0; i < string.length; i++) { view.setUint8(offset + i, string.charCodeAt(i)); } }; writeString(view, 0, 'RIFF'); view.setUint32(4, 36 + samples.length * 2, true); writeString(view, 8, 'WAVE'); writeString(view, 12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, numChannels, true); view.setUint32(24, sampleRate, true); view.setUint32(28, sampleRate * numChannels * 2, true); view.setUint16(32, numChannels * 2, true); view.setUint16(34, 16, true); writeString(view, 36, 'data'); view.setUint32(40, samples.length * 2, true); for (let i = 0; i < samples.length; i++) { let s = Math.max(-1, Math.min(1, samples[i])); s = s < 0 ? s * 0x8000 : s * 0x7FFF; view.setInt16(44 + i * 2, s, true); } return new Blob([view], { type: 'audio/wav' }); };
             const normalizeAudioData = (channelData, targetDB) => { let sumSquares = 0; for (let i = 0; i < channelData.length; i++) { sumSquares += channelData[i] * channelData[i]; } const rms = Math.sqrt(sumSquares / channelData.length); if (rms < 0.0001) return channelData; const currentDB = 20 * Math.log10(rms); const gainDB = targetDB - currentDB; const gain = Math.pow(10, gainDB / 20); const newData = new Float32Array(channelData.length); for (let i = 0; i < channelData.length; i++) { let val = channelData[i] * gain; if (val > 1.0) val = 1.0; if (val < -1.0) val = -1.0; newData[i] = val; } return newData; };
-            const processAudioSegment = async (rawData, sampleRate, options) => { const offlineCtx = new OfflineAudioContext(1, rawData.length, sampleRate); const source = offlineCtx.createBufferSource(); const buffer = offlineCtx.createBuffer(1, rawData.length, sampleRate); buffer.getChannelData(0).set(rawData); source.buffer = buffer; const highPass = offlineCtx.createBiquadFilter(); highPass.type = 'highpass'; highPass.frequency.value = options.highPassFreq; const deHiss = offlineCtx.createBiquadFilter(); deHiss.type = 'highshelf'; deHiss.frequency.value = 8000; deHiss.gain.value = options.highShelfGain; const presence = offlineCtx.createBiquadFilter(); presence.type = 'peaking'; presence.frequency.value = 2500; presence.Q.value = 1.0; presence.gain.value = options.peakingGain; source.connect(highPass); highPass.connect(deHiss); deHiss.connect(presence); presence.connect(offlineCtx.destination); source.start(); const rendered = await offlineCtx.startRendering(); return rendered.getChannelData(0); };
+            const processAudioSegment = async (rawData, sampleRate, options) => { const offlineCtx = new OfflineAudioContext(1, rawData.length, sampleRate); const source = offlineCtx.createBufferSource(); const buffer = offlineCtx.createBuffer(1, rawData.length, sampleRate); buffer.getChannelData(0).set(rawData); source.buffer = buffer; const highPass = offlineCtx.createBiquadFilter(); highPass.type = 'highpass'; highPass.frequency.value = options.highPassFreq; const deHiss = offlineCtx.createBiquadFilter(); deHiss.type = 'highshelf'; deHiss.frequency.value = options.highShelfGain; const presence = offlineCtx.createBiquadFilter(); presence.type = 'peaking'; presence.frequency.value = 2500; presence.Q.value = 1.0; presence.gain.value = options.peakingGain; source.connect(highPass); highPass.connect(deHiss); deHiss.connect(presence); presence.connect(offlineCtx.destination); source.start(); const rendered = await offlineCtx.startRendering(); return rendered.getChannelData(0); };
             const getAudioSegmentBlobAsync = async (start, end, denoiseParams) => { if (!audioBuffer) return null; const pad = 0.1; const pStart = Math.max(0, start - pad); const pEnd = Math.min(audioBuffer.duration, end + pad); const sampleRate = audioBuffer.sampleRate; const startSample = Math.floor(pStart * sampleRate); const endSample = Math.floor(pEnd * sampleRate); const length = endSample - startSample; if (length <= 0) return null; const numChannels = audioBuffer.numberOfChannels; let processedChannels = []; for (let c = 0; c < numChannels; c++) { let rawData = audioBuffer.getChannelData(c).slice(startSample, startSample + length); if (denoiseParams) { try { const opts = { highPassFreq: denoiseParams.highPassFreq, highShelfGain: denoiseParams.highShelfGain, peakingGain: denoiseParams.peakingGain }; rawData = await processAudioSegment(rawData, sampleRate, opts); } catch(e) { console.error("Denoise failed", e); } } if (doNormalize) { processedChannels.push(normalizeAudioData(rawData, targetLoudness)); } else { processedChannels.push(rawData); } } let interleaved; if (numChannels === 2) { interleaved = new Float32Array(length * 2); for (let i = 0; i < length; i++) { interleaved[i * 2] = processedChannels[0][i]; interleaved[i * 2 + 1] = processedChannels[1][i]; } } else { interleaved = processedChannels[0]; } return encodeWAV(interleaved, numChannels, sampleRate); };
 
             const playMarkerByIndex = async (index) => { if (index < 0 || index >= markers.length) return; const marker = markers[index]; if (marker.qualityStatus === 'missing') return; if (marker.isDenoised) { stopPlayback(); const wavBlob = await getAudioSegmentBlobAsync(marker.start, marker.end, marker.denoiseParams); const url = URL.createObjectURL(wavBlob); const audio = new Audio(url); audio.play(); audioSourceRef.current = { stop: () => { audio.pause(); } }; } else { playRange(marker.start, marker.duration); } const resolved = resolveMarkerData(marker, index); setActiveDisplay(resolved); setActiveMarkerIndex(index); };
@@ -488,13 +493,109 @@
             const handleSliderChange = (setter) => (e) => { setEditMode('auto'); setter(Number(e.target.value)); };
             function formatTime(seconds) { if (seconds < 0) return "--:--:--"; const h = Math.floor(seconds / 3600); const m = Math.floor((seconds % 3600) / 60); const s = Math.floor(seconds % 60); const ms = Math.floor((seconds % 1) * 1000); return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')}`; }
             const getCanvasX = (e) => { if (!canvasRef.current) return 0; const rect = canvasRef.current.getBoundingClientRect(); const scaleX = canvasRef.current.width / rect.width; return (e.clientX - rect.left) * scaleX; };
-            const handleCanvasMouseMove = (e) => { if (!audioBuffer) return; const x = getCanvasX(e); const width = canvasRef.current.width; const time = (x / width) * audioBuffer.duration; if (dragTarget) { if (dragTarget.type === 'body') { const dx = Math.abs(x - clickStartPosRef.current); if (dx > 5) dragMovedRef.current = true; } if (dragTarget.type === 'minimap') { const minimapWidth = minimapRef.current.width; const ratio = x / minimapWidth; const newScroll = ratio * containerRef.current.scrollWidth - containerRef.current.clientWidth / 2; containerRef.current.scrollLeft = newScroll; return; } if (dragTarget.type === 'create') { } if (dragTarget.type === 'body' && !dragMovedRef.current) return; const { id, type, offset } = dragTarget; setMarkers(prev => prev.map(m => { if (m.id !== id) return m; let newStart = m.start; let newEnd = m.end; const duration = m.end - m.start; if (type === 'start') { newStart = Math.max(0, Math.min(time, m.end - 0.1)); newEnd = m.end; } else if (type === 'end') { newEnd = Math.min(audioBuffer.duration, Math.max(time, m.start + 0.1)); newStart = m.start; } else if (type === 'body') { newStart = time - offset; if (newStart < 0) newStart = 0; if (newStart + duration > audioBuffer.duration) newStart = audioBuffer.duration - duration; newEnd = newStart + duration; } const newDuration = newEnd - newStart; return { ...m, start: newStart, end: newEnd, duration: newDuration, formattedStart: formatTime(newStart), formattedDuration: newDuration.toFixed(3) + 's', }; })); return; } const hoverThresholdPx = 12 * (canvasRef.current.width / canvasRef.current.getBoundingClientRect().width); let target = null; let foundEdge = false; for (const m of markers) { if (m.qualityStatus === 'missing') continue; const startX = (m.start / audioBuffer.duration) * width; const endX = (m.end / audioBuffer.duration) * width; if (Math.abs(x - startX) < hoverThresholdPx) { target = { id: m.id, type: 'start' }; foundEdge = true; break; } if (Math.abs(x - endX) < hoverThresholdPx) { target = { id: m.id, type: 'end' }; foundEdge = true; break; } } if (!foundEdge) { for (const m of markers) { if (m.qualityStatus === 'missing') continue; const startX = (m.start / audioBuffer.duration) * width; const endX = (m.end / audioBuffer.duration) * width; if (x > startX && x < endX) { target = { id: m.id, type: 'body' }; break; } } } setHoverTarget(target); };
+            const handleCanvasMouseMove = (e) => { if (!audioBuffer) return; const x = getCanvasX(e); const width = canvasRef.current.width; const time = (x / width) * audioBuffer.duration; if (dragTarget) { if (dragTarget.type === 'body') { const dx = Math.abs(x - clickStartPosRef.current); if (dx > 5) dragMovedRef.current = true; } if (dragTarget.type === 'minimap') { const minimapWidth = minimapRef.current.width; const ratio = x / minimapWidth; const newScroll = ratio * containerRef.current.scrollWidth - containerRef.current.clientWidth / 2; containerRef.current.scrollLeft = newScroll; return; } if (dragTarget.type === 'create') { } if (dragTarget.type === 'body' && !dragMovedRef.current) return; const { id, type, offset } = dragTarget; setMarkers(prev => prev.map(m => { if (m.id !== id) return m; let newStart = m.start; let newEnd = m.end; const duration = m.end - m.start; if (type === 'start') { newStart = Math.max(0, Math.min(time, m.end - 0.1)); newEnd = m.end; } else { newEnd = Math.min(audioBuffer.duration, Math.max(time, m.start + 0.1)); newStart = m.start; } if (type === 'body') { newStart = time - offset; if (newStart < 0) newStart = 0; if (newStart + duration > audioBuffer.duration) newStart = audioBuffer.duration - duration; newEnd = newStart + duration; } const newDuration = newEnd - newStart; return { ...m, start: newStart, end: newEnd, duration: newDuration, formattedStart: formatTime(newStart), formattedDuration: newDuration.toFixed(3) + 's', }; })); return; } const hoverThresholdPx = 12 * (canvasRef.current.width / canvasRef.current.getBoundingClientRect().width); let target = null; let foundEdge = false; for (const m of markers) { if (m.qualityStatus === 'missing') continue; const startX = (m.start / audioBuffer.duration) * width; const endX = (m.end / audioBuffer.duration) * width; if (Math.abs(x - startX) < hoverThresholdPx) { target = { id: m.id, type: 'start' }; foundEdge = true; break; } if (Math.abs(x - endX) < hoverThresholdPx) { target = { id: m.id, type: 'end' }; foundEdge = true; break; } } if (!foundEdge) { for (const m of markers) { if (m.qualityStatus === 'missing') continue; const startX = (m.start / audioBuffer.duration) * width; const endX = (m.end / audioBuffer.duration) * width; if (x > startX && x < endX) { target = { id: m.id, type: 'body' }; break; } } } setHoverTarget(target); };
             const handleCanvasMouseDown = (e) => { if (!audioBuffer) return; const x = getCanvasX(e); const width = canvasRef.current.width; const time = (x / width) * audioBuffer.duration; if (hoverTarget) { let offset = 0; if (hoverTarget.type === 'body') { const marker = markers.find(m => m.id === hoverTarget.id); if (marker) offset = time - marker.start; } clickStartPosRef.current = x; dragMovedRef.current = false; setEditMode('manual'); setDragTarget({ ...hoverTarget, offset }); setIsPlaying(false); } else { setEditMode('manual'); setDragTarget({ type: 'create', startX: x, startTime: time }); setCurrentTime(time); } };
             const handleCanvasMouseUp = (e) => { if (dragTarget?.type === 'body' && !dragMovedRef.current) { const index = markers.findIndex(m => m.id === dragTarget.id); if (index !== -1) { playMarkerByIndex(index); } } if (dragTarget?.type === 'create') { const endX = getCanvasX(e); const width = canvasRef.current.width; const endTime = (endX / width) * audioBuffer.duration; if (Math.abs(endX - dragTarget.startX) > 10) { const start = Math.min(dragTarget.startTime, endTime); const end = Math.max(dragTarget.startTime, endTime); const newId = markers.length > 0 ? Math.max(...markers.map(m => m.id)) + 1 : 1; const newMarker = { id: newId, name: `New Marker ${newId}`, secondary: '', previewFileName: `new_marker_${newId}`, start: start, end: end, duration: end - start, formattedDuration: (end - start).toFixed(3) + 's', qualityStatus: 'normal', qualityText: 'Manual', isDenoised: false, denoiseParams: { highPassFreq: 100, highShelfGain: -10, peakingGain: 3 }, hasIssue: false, issueReason: null }; setMarkers(prev => [...prev, newMarker].sort((a, b) => a.start - b.start)); } } setDragTarget(null); };
             const handleCanvasMouseLeave = () => { setDragTarget(null); setHoverTarget(null); };
-            const handleMinimapMouseDown = (e) => { if (!audioBuffer || !minimapRef.current) return; const rect = minimapRef.current.getBoundingClientRect(); const x = e.clientX - rect.left; const width = minimapRef.current.width; const ratio = x / width; if (containerRef.current) { const scrollWidth = containerRef.current.scrollWidth; const clientWidth = containerRef.current.clientWidth; const newScroll = ratio * scrollWidth - clientWidth / 2; containerRef.current.scrollLeft = newScroll; } setDragTarget({ type: 'minimap' }); };
+            const handleMinimapMouseDown = (e) => { if (!audioBuffer || !minimapRef.current) return; const rect = minimapRef.current.getBoundingClientRect(); const x = e.clientX - rect.left; const width = minimapRef.current.width; const ratio = x / width; if (containerRef.current) { const scrollWidth = containerRef.current.scrollWidth; const clientWidth = containerRef.current.clientWidth; const newScroll = ratio * scrollWidth - clientWidth / 2; containerRef.current.scrollLeft = newScroll; return; } setDragTarget({ type: 'minimap' }); };
             const handleMinimapMouseMove = (e) => { if (dragTarget?.type === 'minimap') { handleMinimapMouseDown(e); } };
             const handleContainerScroll = () => { if (containerRef.current) { setScrollLeft(containerRef.current.scrollLeft); } };
+
+            // Analyzer Logic (Updated for Batch)
+            const handleAnalyzerUpload = async (e) => {
+                const fileList = e.target.files;
+                if (!fileList || fileList.length === 0) return;
+                
+                // Convert FileList to Array immediately to avoid issues during async ops
+                const files = Array.from(fileList);
+                
+                setIsAnalyzing(true);
+                // Clear input value to allow re-uploading same files
+                e.target.value = null;
+
+                // Force a small delay to let React render the loading state
+                await new Promise(r => setTimeout(r, 50));
+
+                const newResults = [];
+                try {
+                    const ctx = await getAudioContext();
+                    
+                    for (let i = 0; i < files.length; i++) {
+                        const file = files[i];
+                        try {
+                            const arrayBuffer = await file.arrayBuffer();
+                            const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+
+                            let maxPeak = 0;
+                            let totalSumSquares = 0;
+                            let totalLength = 0;
+
+                            for (let c = 0; c < audioBuffer.numberOfChannels; c++) {
+                                const data = audioBuffer.getChannelData(c);
+                                for (let j = 0; j < data.length; j++) {
+                                    const abs = Math.abs(data[j]);
+                                    if (abs > maxPeak) maxPeak = abs;
+                                    totalSumSquares += data[j] * data[j];
+                                }
+                                totalLength += data.length;
+                            }
+
+                            const rms = Math.sqrt(totalSumSquares / totalLength);
+                            const peakDb = 20 * Math.log10(maxPeak);
+                            const rmsDb = 20 * Math.log10(rms);
+
+                            newResults.push({
+                                id: Date.now() + Math.random(),
+                                filename: file.name,
+                                duration: audioBuffer.duration,
+                                channels: audioBuffer.numberOfChannels,
+                                sampleRate: audioBuffer.sampleRate,
+                                peakDb: peakDb.toFixed(2),
+                                rmsDb: rmsDb.toFixed(2),
+                                peakLinear: maxPeak,
+                                rmsLinear: rms,
+                                status: 'success'
+                            });
+                        } catch (err) {
+                            console.error(`Error analyzing ${file.name}:`, err);
+                            newResults.push({
+                                id: Date.now() + Math.random(),
+                                filename: file.name,
+                                status: 'error',
+                                errorMsg: '解碼失敗 (可能格式不支援)'
+                            });
+                        }
+                    }
+                    
+                    setAnalyzerResults(prev => [...prev, ...newResults]);
+                } catch (e) {
+                    console.error("Batch analysis fatal error:", e);
+                    alert("批次分析發生錯誤: " + e.message);
+                } finally {
+                    setIsAnalyzing(false);
+                }
+            };
+            
+            const clearAnalyzerResults = () => {
+                setAnalyzerResults([]);
+            };
+            
+            const exportAnalyzerReport = () => {
+                if (analyzerResults.length === 0) return;
+                let content = "Filename,Duration (s),SampleRate (Hz),Channels,Peak (dB),RMS (dB),Status\n";
+                analyzerResults.forEach(r => {
+                    if (r.status === 'success') {
+                         content += `${r.filename},${r.duration.toFixed(2)},${r.sampleRate},${r.channels},${r.peakDb},${r.rmsDb},OK\n`;
+                    } else {
+                         content += `${r.filename},,,,,,Error\n`;
+                    }
+                });
+                const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement("a");
+                link.href = URL.createObjectURL(blob);
+                link.download = `Audio_Analysis_Report_${new Date().toISOString().slice(0,10)}.csv`;
+                link.click();
+            };
 
             // Main Waveform Draw Logic
             useEffect(() => { if (!audioBuffer || !canvasRef.current) return; const canvas = canvasRef.current; const ctx = canvas.getContext('2d'); const baseWidth = containerRef.current ? containerRef.current.clientWidth : 800; const width = Math.floor(baseWidth * zoomLevel); const height = canvas.height; if (canvas.width !== width) canvas.width = width; ctx.clearRect(0, 0, width, height); ctx.fillStyle = '#1e293b'; ctx.fillRect(0, 0, width, height); const data = audioBuffer.getChannelData(0); const step = Math.ceil(data.length / width); const amp = height / 2; ctx.beginPath(); ctx.strokeStyle = '#60a5fa'; ctx.lineWidth = 1; for (let i = 0; i < width; i++) { let min = 1.0; let max = -1.0; const startIdx = Math.floor(i * step); for (let j = 0; j < step; j++) { const idx = startIdx + j; if (idx < data.length) { const datum = data[idx] * ampScale; if (datum < min) min = datum; if (datum > max) max = datum; } } if (min < -1) min = -1; if (max > 1) max = 1; if (min === 1.0 && max === -1.0) { min = 0; max = 0; } ctx.moveTo(i, (1 + min) * amp); ctx.lineTo(i, (1 + max) * amp); } ctx.stroke(); const thresholdLinear = Math.pow(10, threshold / 20) * ampScale; let visualThresh = Math.min(thresholdLinear, 1); const thresholdYTop = (1 - visualThresh) * amp; const thresholdYBot = (1 + visualThresh) * amp; ctx.beginPath(); ctx.strokeStyle = '#fbbf24'; ctx.setLineDash([5, 5]); ctx.moveTo(0, thresholdYTop); ctx.lineTo(width, thresholdYTop); ctx.moveTo(0, thresholdYBot); ctx.lineTo(width, thresholdYBot); ctx.stroke(); ctx.setLineDash([]); markers.forEach(marker => { if (marker.qualityStatus === 'missing') return; const startX = (marker.start / audioBuffer.duration) * width; const endX = (marker.end / audioBuffer.duration) * width; if (hoverTarget?.id === marker.id && hoverTarget?.type === 'body') { ctx.fillStyle = 'rgba(239, 68, 68, 0.4)'; } else { ctx.fillStyle = 'rgba(239, 68, 68, 0.2)'; } ctx.fillRect(startX, 0, endX - startX, height); ctx.lineWidth = 4; ctx.beginPath(); const isHoverStart = hoverTarget?.id === marker.id && hoverTarget?.type === 'start'; ctx.strokeStyle = isHoverStart ? '#ffffff' : 'rgba(239, 68, 68, 0.8)'; ctx.moveTo(startX, 0); ctx.lineTo(startX, height); ctx.stroke(); ctx.beginPath(); const isHoverEnd = hoverTarget?.id === marker.id && hoverTarget?.type === 'end'; ctx.strokeStyle = isHoverEnd ? '#ffffff' : 'rgba(239, 68, 68, 0.8)'; ctx.moveTo(endX, 0); ctx.lineTo(endX, height); ctx.stroke(); ctx.fillStyle = '#ef4444'; ctx.font = '12px sans-serif'; ctx.fillText(marker.id, startX + 5, 15); }); const playheadX = (currentTime / audioBuffer.duration) * width; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(playheadX, 0); ctx.lineTo(playheadX, height); ctx.stroke(); if (canvas) { if (dragTarget) { if (dragTarget.type === 'body') canvas.style.cursor = 'grabbing'; else if (dragTarget.type === 'create') canvas.style.cursor = 'crosshair'; else canvas.style.cursor = 'col-resize'; } else if (hoverTarget) { if (hoverTarget.type === 'body') canvas.style.cursor = 'grab'; else canvas.style.cursor = 'col-resize'; } else { canvas.style.cursor = 'default'; } } }, [audioBuffer, markers, threshold, currentTime, zoomLevel, ampScale, hoverTarget, dragTarget]);
@@ -511,18 +612,20 @@
                         <div>
                             <h1 className="text-2xl font-bold flex items-center gap-2">
                             <BrainCircuit className="text-purple-500" />
-我是小寶貝6.0                            </h1>
-                            <p className="text-slate-400 text-sm mt-1">單檔自動切分 (Auto-Split) 與 多檔依序合併 (Batch Merge)</p>
+                            我是小寶貝6.0
+                            </h1>
+                            <p className="text-slate-400 text-sm mt-1">單檔自動切分 (Auto-Split) 與 多檔依序合併 (Batch Merger)</p>
                         </div>
-                        <div className="flex bg-slate-800 p-1 rounded-lg border border-slate-700">
-                            <button onClick={() => setViewMode('splitter')} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition ${viewMode === 'splitter' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}><Scissors size={16} /> 切分 / 編輯</button>
-                            <button onClick={() => setViewMode('merger')} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition ${viewMode === 'merger' ? 'bg-purple-600 text-white' : 'text-slate-400 hover:text-white'}`}><Merge size={16} /> 批次合併</button>
-                            <button onClick={() => setViewMode('manual_input')} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition ${viewMode === 'manual_input' ? 'bg-green-600 text-white' : 'text-slate-400 hover:text-white'}`}><PenTool size={16} /> 單句輸入</button>
-                            <button onClick={() => setViewMode('batch_qc')} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition ${viewMode === 'batch_qc' ? 'bg-orange-600 text-white' : 'text-slate-400 hover:text-white'}`}><ListChecks size={16} /> 批次生產線</button>
+                        <div className="flex bg-slate-800 p-1 rounded-lg border border-slate-700 flex-wrap gap-1">
+                            <button onClick={() => setViewMode('splitter')} className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-bold transition ${viewMode === 'splitter' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}><Scissors size={16} /> 切分</button>
+                            <button onClick={() => setViewMode('merger')} className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-bold transition ${viewMode === 'merger' ? 'bg-purple-600 text-white' : 'text-slate-400 hover:text-white'}`}><Merge size={16} /> 合併</button>
+                            <button onClick={() => setViewMode('manual_input')} className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-bold transition ${viewMode === 'manual_input' ? 'bg-green-600 text-white' : 'text-slate-400 hover:text-white'}`}><PenTool size={16} /> 輸入</button>
+                            <button onClick={() => setViewMode('batch_qc')} className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-bold transition ${viewMode === 'batch_qc' ? 'bg-orange-600 text-white' : 'text-slate-400 hover:text-white'}`}><ListChecks size={16} /> 產線</button>
+                            <button onClick={() => setViewMode('loudness_analyzer')} className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-bold transition ${viewMode === 'loudness_analyzer' ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-white'}`}><Activity size={16} /> 音量檢測</button>
                         </div>
                         <div className="flex flex-wrap gap-3 w-full xl:w-auto items-center">
                             {/* Toolbar content based on mode */}
-                            {viewMode !== 'manual_input' && (
+                            {viewMode === 'splitter' && (
                                 <>
                                 {!scriptFileName ? (
                                 <div className="flex gap-2">
@@ -586,6 +689,108 @@
                     </div>
 
                     {errorMsg && <div className="bg-red-500/20 border border-red-500/50 text-red-200 p-3 rounded-lg flex items-center gap-2"><AlertCircle size={20} /><span>{errorMsg}</span></div>}
+
+                    {/* LOUDNESS ANALYZER VIEW - Updated for Batch */}
+                    {viewMode === 'loudness_analyzer' && (
+                        <div className="bg-slate-800 p-8 rounded-xl border border-slate-700 max-w-5xl mx-auto shadow-2xl flex flex-col items-center">
+                            <h2 className="text-2xl font-bold text-cyan-400 mb-6 flex items-center gap-2"><Activity /> 批次音量檢測器</h2>
+                            
+                            <div className="w-full space-y-6">
+                                <div className="border-2 border-dashed border-slate-600 rounded-lg p-8 text-center hover:bg-slate-700/50 transition cursor-pointer relative bg-slate-900/50">
+                                    <input 
+                                        type="file" 
+                                        accept="audio/*, video/mp4, video/x-m4v, .mkv"
+                                        multiple 
+                                        onChange={handleAnalyzerUpload}
+                                        className="absolute inset-0 opacity-0 cursor-pointer"
+                                    />
+                                    <div className="flex flex-col items-center gap-3">
+                                        {isAnalyzing ? (
+                                            <RefreshCw size={48} className="text-cyan-400 animate-spin"/>
+                                        ) : (
+                                            <Upload size={48} className="text-slate-400"/>
+                                        )}
+                                        <span className="text-slate-300 font-medium">
+                                            {isAnalyzing ? "正在分析音訊..." : "點擊或拖曳上傳多個檔案"}
+                                        </span>
+                                        <span className="text-slate-500 text-xs">支援 WAV, MP3, M4A, OGG, MP4</span>
+                                    </div>
+                                </div>
+
+                                {analyzerResults.length > 0 && (
+                                    <div className="bg-slate-900 rounded-xl border border-slate-600 p-4 animate-in fade-in slide-in-from-bottom-4">
+                                        <div className="flex justify-between items-center mb-4 pb-2 border-b border-slate-700">
+                                            <div className="flex items-center gap-2">
+                                                <FileAudio size={20} className="text-cyan-400"/>
+                                                <h3 className="font-bold text-white">檢測報告 ({analyzerResults.length})</h3>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <button onClick={clearAnalyzerResults} className="text-xs px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded text-slate-300">清除列表</button>
+                                                <button onClick={exportAnalyzerReport} className="text-xs px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 rounded text-white font-bold flex items-center gap-1"><Download size={14}/> 匯出 CSV</button>
+                                            </div>
+                                        </div>
+                                        
+                                        <div className="overflow-x-auto max-h-[500px] overflow-y-auto custom-scrollbar">
+                                            <table className="w-full text-sm text-left">
+                                                <thead className="text-xs text-slate-400 uppercase bg-slate-800 sticky top-0 z-10">
+                                                    <tr>
+                                                        <th className="px-4 py-3">檔名</th>
+                                                        <th className="px-4 py-3">時長</th>
+                                                        <th className="px-4 py-3 text-center">Peak (dB)</th>
+                                                        <th className="px-4 py-3 text-center">RMS (dB)</th>
+                                                        <th className="px-4 py-3">狀態</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-700/50">
+                                                    {analyzerResults.map((res) => {
+                                                        if (res.status === 'error') {
+                                                            return (
+                                                                <tr key={res.id} className="bg-red-900/10">
+                                                                    <td className="px-4 py-3 text-red-300">{res.filename}</td>
+                                                                    <td colSpan="4" className="px-4 py-3 text-red-400 text-xs">{res.errorMsg}</td>
+                                                                </tr>
+                                                            );
+                                                        }
+
+                                                        const peakVal = Number(res.peakDb);
+                                                        const rmsVal = Number(res.rmsDb);
+                                                        const peakWarning = peakVal > -1; // Red flag if nearly clipping
+                                                        const rmsWarning = rmsVal > -14 || rmsVal < -24; // Simple heuristic for too loud/quiet
+
+                                                        return (
+                                                            <tr key={res.id} className="hover:bg-slate-800/50">
+                                                                <td className="px-4 py-2 font-medium text-slate-200 truncate max-w-[200px]" title={res.filename}>{res.filename}</td>
+                                                                <td className="px-4 py-2 text-slate-400 font-mono text-xs">{formatTime(res.duration)}</td>
+                                                                <td className={`px-4 py-2 text-center font-mono font-bold ${peakWarning ? 'text-red-500' : 'text-emerald-400'}`}>
+                                                                    {res.peakDb}
+                                                                </td>
+                                                                <td className={`px-4 py-2 text-center font-mono font-bold ${rmsWarning ? 'text-yellow-400' : 'text-blue-400'}`}>
+                                                                    {res.rmsDb}
+                                                                </td>
+                                                                <td className="px-4 py-2">
+                                                                    {peakWarning ? <span className="text-[10px] bg-red-900 text-red-200 px-1 rounded">Clip Risk</span> : 
+                                                                     rmsWarning ? <span className="text-[10px] bg-yellow-900 text-yellow-200 px-1 rounded">Check Volume</span> : 
+                                                                     <span className="text-[10px] bg-emerald-900 text-emerald-200 px-1 rounded">OK</span>}
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                        
+                                        <div className="mt-4 bg-slate-800/50 p-3 rounded text-xs text-slate-400 flex gap-2 items-start">
+                                            <Info size={14} className="shrink-0 mt-0.5"/>
+                                            <div>
+                                                <p>• 建議 Podcast 人聲平均 (RMS) 落在 <span className="text-white">-16 ~ -18 dB</span>。</p>
+                                                <p>• 峰值 (Peak) 絕對不可超過 <span className="text-white">0 dB</span>，建議控制在 <span className="text-white">-1 ~ -3 dB</span> 保留餘裕。</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
 
                     {/* MANUAL INPUT VIEW */}
                     {viewMode === 'manual_input' && (
@@ -831,190 +1036,7 @@
                         </div>
                     )}
 
-                    {viewMode === 'splitter' ? (
-                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                            <div className="lg:col-span-3 bg-slate-800 p-5 rounded-xl border border-slate-700 space-y-6 h-fit lg:sticky lg:top-6">
-                                <div className="flex items-center gap-2 text-lg font-semibold text-white"><Settings size={20} /><span>偵測設定</span></div>
-                                <div className="text-xs text-slate-500 mb-2">拉動滑桿會重置為自動模式</div>
-                                <div className="space-y-2"><div className="flex justify-between text-sm"><span className="text-slate-300">音量門檻</span><span className="font-mono text-blue-400">{threshold} dB</span></div><input type="range" min="-60" max="0" step="1" value={threshold} onChange={handleSliderChange(setThreshold)} className="w-full h-2 bg-slate-600 rounded-lg accent-blue-500"/></div>
-                                <div className="space-y-2"><div className="flex justify-between text-sm"><span className="text-slate-300">最短靜音</span><span className="font-mono text-blue-400">{minSilenceDuration} s</span></div><input type="range" min="0.1" max="2.0" step="0.1" value={minSilenceDuration} onChange={handleSliderChange(setMinSilenceDuration)} className="w-full h-2 bg-slate-600 rounded-lg accent-blue-500"/></div>
-                                <div className="space-y-2"><div className="flex justify-between text-sm"><span className="text-slate-300">最短語句</span><span className="font-mono text-blue-400">{minSpeechDuration} s</span></div><input type="range" min="0.1" max="1.0" step="0.1" value={minSpeechDuration} onChange={handleSliderChange(setMinSpeechDuration)} className="w-full h-2 bg-slate-600 rounded-lg accent-blue-500"/></div>
-                                <div className="space-y-2"><div className="flex justify-between text-sm"><span className="text-slate-300">前後緩衝</span><span className="font-mono text-blue-400">{padding} s</span></div><input type="range" min="0.0" max="0.5" step="0.05" value={padding} onChange={handleSliderChange(setPadding)} className="w-full h-2 bg-slate-600 rounded-lg accent-blue-500"/></div>
-                                <div className="pt-4 border-t border-slate-700">
-                                    <div className="flex justify-between items-center mb-2"><span className="text-sm text-slate-300">模式狀態：</span><span className={`text-xs px-2 py-1 rounded font-bold ${editMode === 'auto' ? 'bg-blue-900 text-blue-200' : 'bg-orange-900 text-orange-200'}`}>{editMode === 'auto' ? '自動偵測中' : '手動編輯鎖定'}</span></div>
-                                    <button onClick={() => setScriptFlowMode(!scriptFlowMode)} className="w-full flex items-center justify-between p-3 bg-slate-700 rounded-lg hover:bg-slate-600 transition" title="開啟後，刪除標記時文字會自動遞補到下一段">
-                                        <div className="flex items-center gap-2">{scriptFlowMode ? <Link2 size={18} className="text-green-400"/> : <Link2Off size={18} className="text-slate-400"/>}<span className="text-sm">腳本文字連動</span></div>
-                                        <span className={`text-xs font-mono px-2 py-1 rounded ${scriptFlowMode ? 'bg-green-900 text-green-200' : 'bg-slate-900 text-slate-400'}`}>{scriptFlowMode ? "Flow ON" : "Locked"}</span>
-                                    </button>
-                                </div>
-                                
-                                {/* Normalization Controls */}
-                                <div className="pt-4 border-t border-slate-700">
-                                    <div className="flex items-center gap-2 text-sm text-white font-semibold mb-2"><Volume2 size={16} /> 輸出設定 (全域)</div>
-                                    <label className="flex items-center justify-between cursor-pointer mb-2">
-                                        <span className="text-sm text-slate-300">音量平衡 (Normalize)</span>
-                                        <input type="checkbox" checked={doNormalize} onChange={(e) => setDoNormalize(e.target.checked)} className="w-4 h-4 rounded border-slate-500 text-purple-600 bg-slate-700"/>
-                                    </label>
-                                    {doNormalize && (
-                                        <div className="flex justify-between items-center bg-slate-900/50 p-2 rounded mb-2">
-                                            <span className="text-xs text-slate-400">目標音量 (dB)</span>
-                                            <input type="number" value={targetLoudness} onChange={(e) => setTargetLoudness(Number(e.target.value))} className="w-16 bg-slate-700 text-white text-xs px-2 py-1 rounded text-center" max="0" min="-60"/>
-                                        </div>
-                                    )}
-                                </div>
-
-                                <div className="bg-slate-900/50 p-3 rounded-lg text-xs text-slate-400 space-y-1"><div className="flex justify-between"><span>段落數：</span><span className="text-white font-mono">{markers.length}</span></div>{scriptData.length > 0 && <div className="flex justify-between text-emerald-400"><span>腳本行數：</span><span className="font-mono">{scriptData.length}</span></div>}</div>
-                            </div>
-                            <div className="lg:col-span-9 space-y-6">
-                                <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden flex flex-col h-[700px]">
-                                    <div className="p-4 border-b border-slate-700 flex justify-between items-center bg-slate-800 sticky top-0 z-10">
-                                        <div className="flex items-center gap-2"><h3 className="font-semibold text-slate-200">切分列表 ({markers.length})</h3>{scriptData.length > 0 && <span className="text-xs bg-emerald-900 text-emerald-300 px-2 py-0.5 rounded">腳本模式</span>}</div>
-                                        <div className="flex items-center gap-2">
-                                            <div className="flex items-center bg-slate-700 rounded-lg p-0.5 mr-2"><button onClick={playPreviousSegment} className="p-1.5 hover:bg-slate-600 rounded text-slate-300 hover:text-white transition" title="上一段"><SkipBack size={14} /></button><div className="w-px h-3 bg-slate-600 mx-0.5"></div><button onClick={stopPlayback} className="p-1.5 hover:bg-red-900/50 rounded text-slate-300 hover:text-red-300 transition" title="停止"><Square size={14} fill="currentColor"/></button><div className="w-px h-3 bg-slate-600 mx-0.5"></div><button onClick={togglePlay} className="p-1.5 hover:bg-slate-600 rounded text-slate-300 hover:text-white transition" title="播放/暫停">{isPlaying ? <Pause size={14}/> : <Play size={14}/>}</button><div className="w-px h-3 bg-slate-600 mx-0.5"></div><button onClick={playNextSegment} className="p-1.5 hover:bg-slate-600 rounded text-slate-300 hover:text-white transition" title="下一段"><SkipForward size={14} /></button></div>
-                                            {missingCount > 0 && (<span className="flex items-center gap-1 text-xs text-red-400 bg-red-900/30 px-2 py-1 rounded border border-red-500/30"><AlertTriangle size={12} /> 有 {missingCount} 行缺少音檔</span>)}
-                                            <button onClick={() => { const t = currentTime || 0; setEditMode('manual'); const newId = markers.length > 0 ? Math.max(...markers.map(m=>m.id))+1 : 1; setMarkers(prev => [...prev, {id: newId, start: t, end: Math.min(t+1, audioBuffer?.duration||t+1), duration: 1, name: 'New', previewFileName: `new_${newId}`, qualityStatus: 'normal', qualityText: 'Manual', isDenoised: false, denoiseParams: { highPassFreq: 100, highShelfGain: -10, peakingGain: 3 }, hasIssue: false }].sort((a,b)=>a.start-b.start)); }} className="flex items-center gap-1 bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded text-xs font-bold transition"><Plus size={14}/> 新增段落</button>
-                                        </div>
-                                    </div>
-                                    <div className="overflow-y-auto flex-1 p-2">
-                                        <div className="space-y-2">
-                                            <div className="grid grid-cols-12 gap-4 px-4 py-2 text-xs text-slate-500 uppercase font-semibold">
-                                                <div className="col-span-1">#</div><div className="col-span-4">內容資訊 (Info)</div><div className="col-span-5 text-center">波形微調 (Waveform Edit)</div><div className="col-span-2 text-right">Action</div>
-                                            </div>
-                                            {markers.map((marker, index) => {
-                                                const resolved = resolveMarkerData(marker, index);
-                                                let sim = undefined;
-                                                if (marker.recognizedText && resolved.secondary) sim = calculateSimilarity(marker.recognizedText, resolved.secondary);
-                                                const isActive = activeDisplay && activeDisplay.name === resolved.name && activeDisplay.secondary === resolved.secondary;
-                                                const isMissing = marker.qualityStatus === 'missing';
-                                                const showSettings = expandedDenoiseId === marker.id;
-
-                                                return (
-                                                <div key={marker.id} onClick={() => playMarkerByIndex(index)} className={`rounded-lg transition border border-transparent hover:border-slate-600 group ${isMissing ? 'bg-red-900/10 border-red-500/20' : isActive ? 'bg-blue-900/20 border-blue-500/30' : 'bg-slate-700/30 hover:bg-slate-700/60'} ${marker.hasIssue ? 'bg-orange-900/20 border-orange-500/30' : ''}`}>
-                                                    <div className="grid grid-cols-12 gap-4 items-center px-4 py-3">
-                                                        <div className="col-span-1 font-mono text-slate-500">{scriptFlowMode ? index + 1 : marker.id}</div>
-                                                        <div className="col-span-4 min-w-0 flex flex-col gap-1.5">
-                                                            <div className={`font-medium truncate cursor-pointer ${isMissing ? 'text-slate-400' : 'text-slate-200'}`} title={resolved.name}>{resolved.name}</div>
-                                                            {resolved.secondary && <div className={`text-base font-mono font-medium break-all leading-snug ${isMissing ? 'text-red-400/50' : 'text-emerald-400'}`} title={resolved.secondary}>{resolved.secondary}</div>}
-                                                            <div className="flex items-center gap-2 text-xs font-mono text-orange-300/70 truncate">
-                                                                <span>{resolved.previewFileName}</span>
-                                                                <span className="text-slate-600">|</span>
-                                                                <span className="text-slate-400">{marker.formattedDuration}</span>
-                                                            </div>
-                                                            {marker.issueReason && (
-                                                                <div className="text-xs text-red-300 bg-red-900/40 px-2 py-1 rounded w-fit flex items-center gap-1 border border-red-500/30">
-                                                                    <AlertTriangle size={10} /> {marker.issueReason}
-                                                                </div>
-                                                            )}
-                                                            {marker.recognizedText && <div className="flex items-start gap-1"><BrainCircuit size={10} className="text-purple-400 mt-0.5 shrink-0"/><div className="text-[10px] text-purple-300 italic truncate" title={marker.recognizedText}>"{marker.recognizedText}"</div></div>}
-                                                        </div>
-                                                        <div className="col-span-5 flex justify-center h-16" onClick={(e) => e.stopPropagation()}>
-                                                            {!isMissing && <MiniWaveform marker={marker} audioBuffer={audioBuffer} onChange={handleMarkerUpdate} onPlay={() => playMarkerByIndex(index)} />}
-                                                        </div>
-                                                        <div className="col-span-2 flex justify-end gap-2 opacity-80 group-hover:opacity-100" onClick={(e) => e.stopPropagation()}>
-                                                            {!isMissing && (
-                                                                <div className="flex flex-col gap-1">
-                                                                    <div className="flex gap-1 relative">
-                                                                        <div className="relative">
-                                                                            <button 
-                                                                                onClick={() => setFlagMenuId(flagMenuId === marker.id ? null : marker.id)} 
-                                                                                className={`flex items-center justify-center w-8 h-8 rounded transition ${marker.hasIssue ? 'bg-red-600 text-white' : 'text-slate-300 bg-slate-600/50 hover:bg-slate-600'}`} 
-                                                                                title={marker.hasIssue ? "已標記問題" : "標記問題"}
-                                                                            >
-                                                                                <Flag size={14} />
-                                                                            </button>
-                                                                            {flagMenuId === marker.id && (
-                                                                                <div className="absolute right-0 top-full mt-1 z-50 bg-slate-800 border border-slate-600 rounded-lg shadow-xl p-1 flex flex-col gap-1 w-32 animate-in fade-in zoom-in-95 duration-100">
-                                                                                    {['族語錯誤', '音檔錯誤', '族語跟音檔不一致'].map(reason => (
-                                                                                        <button 
-                                                                                            key={reason}
-                                                                                            onClick={() => setMarkerIssue(marker.id, reason)}
-                                                                                            className="text-left px-3 py-2 text-xs hover:bg-slate-700 rounded text-slate-200 transition"
-                                                                                        >
-                                                                                            {reason}
-                                                                                        </button>
-                                                                                    ))}
-                                                                                    {marker.hasIssue && (
-                                                                                        <button 
-                                                                                            onClick={() => clearMarkerIssue(marker.id)}
-                                                                                            className="text-left px-3 py-2 text-xs hover:bg-red-900/50 text-red-300 rounded transition border-t border-slate-700 mt-1"
-                                                                                        >
-                                                                                            取消標記
-                                                                                        </button>
-                                                                                    )}
-                                                                                </div>
-                                                                            )}
-                                                                        </div>
-
-                                                                        <button 
-                                                                            onClick={() => toggleMarkerDenoise(marker.id)} 
-                                                                            className={`flex items-center justify-center w-8 h-8 rounded transition ${marker.isDenoised ? 'bg-purple-600 text-white' : 'text-slate-300 bg-slate-600/50 hover:bg-slate-600'}`} 
-                                                                            title={marker.isDenoised ? "降噪已開啟" : "開啟降噪"}
-                                                                        >
-                                                                            <Wand size={14} />
-                                                                        </button>
-                                                                        {marker.isDenoised && (
-                                                                            <button 
-                                                                                onClick={() => setExpandedDenoiseId(showSettings ? null : marker.id)}
-                                                                                className={`flex items-center justify-center w-8 h-8 rounded transition ${showSettings ? 'bg-slate-500 text-white' : 'text-slate-300 bg-slate-600/50 hover:bg-slate-600'}`}
-                                                                                title="調整降噪參數"
-                                                                            >
-                                                                                <Sliders size={14} />
-                                                                            </button>
-                                                                        )}
-                                                                    </div>
-                                                                    <div className="flex gap-1">
-                                                                        <button onClick={() => { playRange(marker.start, marker.duration); setActiveDisplay(resolved); setActiveMarkerIndex(index); }} className="flex items-center justify-center w-8 h-8 text-slate-300 bg-slate-600/50 hover:bg-slate-600 hover:text-white rounded transition"><Play size={14} /></button>
-                                                                        <button onClick={() => downloadSegment(marker, index)} className="flex items-center justify-center w-8 h-8 text-blue-200 bg-blue-600/30 hover:bg-blue-600 hover:text-white rounded transition"><Download size={14} /></button>
-                                                                    </div>
-                                                                </div>
-                                                            )}
-                                                            <button onClick={() => deleteMarker(marker.id)} className="flex items-center justify-center w-8 h-8 text-red-300 bg-red-600/20 hover:bg-red-600 hover:text-white rounded transition self-start" title="刪除標記"><Trash2 size={14} /></button>
-                                                        </div>
-                                                    </div>
-                                                    
-                                                    {/* Expanded Settings Panel */}
-                                                    {showSettings && marker.isDenoised && (
-                                                        <div className="px-4 pb-3 pt-0" onClick={(e) => e.stopPropagation()}>
-                                                            <div className="bg-slate-900/80 rounded p-3 text-xs border border-purple-500/30 grid grid-cols-3 gap-4 relative">
-                                                                <div className="absolute top-1 right-1"><button onClick={() => setExpandedDenoiseId(null)} className="text-slate-500 hover:text-white"><X size={12}/></button></div>
-                                                                <div className="space-y-1">
-                                                                    <div className="flex justify-between text-slate-400"><span>低頻切除 (Low Cut)</span><span className="text-purple-300">{marker.denoiseParams?.highPassFreq} Hz</span></div>
-                                                                    <input 
-                                                                        type="range" min="0" max="300" step="10" 
-                                                                        value={marker.denoiseParams?.highPassFreq || 100} 
-                                                                        onChange={(e) => updateMarkerDenoiseParams(marker.id, { highPassFreq: Number(e.target.value) })}
-                                                                        className="w-full h-1 bg-slate-600 rounded-lg accent-purple-500"
-                                                                    />
-                                                                </div>
-                                                                <div className="space-y-1">
-                                                                    <div className="flex justify-between text-slate-400"><span>高頻降噪 (De-Hiss)</span><span className="text-purple-300">{marker.denoiseParams?.highShelfGain} dB</span></div>
-                                                                    <input 
-                                                                        type="range" min="-40" max="0" step="1" 
-                                                                        value={marker.denoiseParams?.highShelfGain || -10} 
-                                                                        onChange={(e) => updateMarkerDenoiseParams(marker.id, { highShelfGain: Number(e.target.value) })}
-                                                                        className="w-full h-1 bg-slate-600 rounded-lg accent-purple-500"
-                                                                    />
-                                                                </div>
-                                                                <div className="space-y-1">
-                                                                    <div className="flex justify-between text-slate-400"><span>人聲增強 (Presence)</span><span className="text-purple-300">+{marker.denoiseParams?.peakingGain} dB</span></div>
-                                                                    <input 
-                                                                        type="range" min="0" max="10" step="0.5" 
-                                                                        value={marker.denoiseParams?.peakingGain || 3} 
-                                                                        onChange={(e) => updateMarkerDenoiseParams(marker.id, { peakingGain: Number(e.target.value) })}
-                                                                        className="w-full h-1 bg-slate-600 rounded-lg accent-purple-500"
-                                                                    />
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            )})}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    ) : (
+                    {viewMode === 'merger' && (
                         <div className="bg-slate-800 p-6 rounded-xl border border-slate-700 min-h-[500px] flex flex-col gap-6">
                             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                                 <div><h2 className="text-xl font-bold flex items-center gap-2 text-purple-300"><Layers size={24} /> 批次合併 (Batch Merger)</h2><p className="text-slate-400 text-sm mt-1">上傳多個音檔，系統將依據 CSV 腳本順序合併。自動偵測並切分一檔多句的情況。</p></div>
