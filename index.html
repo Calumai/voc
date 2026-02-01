@@ -8,47 +8,32 @@
     <!-- 載入 Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- 載入 Babel 用於解析 JSX (鎖定版本以確保穩定性) -->
+    <!-- 載入 Babel -->
     <script src="https://unpkg.com/@babel/standalone@7.23.6/babel.min.js"></script>
 
     <!-- 載入 JSZip -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
+    <!-- 載入 LameJS -->
+    <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
+
     <style>
-        .custom-scrollbar::-webkit-scrollbar {
-            height: 10px;
-            width: 8px;
-            background-color: #0f172a;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-            background-color: #334155;
-            border-radius: 5px;
-            border: 2px solid #0f172a;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-            background-color: #475569;
-        }
-        body {
-            background-color: #0f172a; 
-            color: #f1f5f9;
-        }
-        /* 禁止選取文字，避免拖曳時反白 */
-        .no-select {
-            user-select: none;
-            -webkit-user-select: none;
-        }
+        .custom-scrollbar::-webkit-scrollbar { height: 10px; width: 8px; background-color: #0f172a; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #334155; border-radius: 5px; border: 2px solid #0f172a; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background-color: #475569; }
+        body { background-color: #0f172a; color: #f1f5f9; }
+        .no-select { user-select: none; -webkit-user-select: none; }
     </style>
 </head>
 <body>
     <div id="root"></div>
 
-    <!-- 修正: 移除 'env' preset，只保留 'react'，避免將 import 轉譯為瀏覽器不支援的 require -->
     <script type="text/babel" data-type="module" data-presets="react">
         import React, { useState, useRef, useEffect, useMemo, useCallback } from 'https://esm.sh/react@18.2.0';
         import ReactDOM from 'https://esm.sh/react-dom@18.2.0/client';
-        import { Upload, Download, Settings, Play, Pause, RefreshCw, Mic, Users, AlertCircle, FileAudio, Scissors, FileSpreadsheet, ZoomIn, Activity, Package, Trash2, Gauge, BrainCircuit, Wand2, Layers, CheckCircle2, XCircle, FileMusic, ArrowRight, Merge, Link2, Link2Off, Move, Plus, MousePointer2, MessageSquare, AlertTriangle, SkipBack, SkipForward, Square, Eye, EyeOff, Volume2, Sliders, X, Flag, FileText, Wand, PenTool, ClipboardPaste, ChevronDown, ListChecks, FileOutput, BarChart2, Info } from 'https://esm.sh/lucide-react@0.294.0?deps=react@18.2.0';
+        import { Upload, Download, Settings, Play, Pause, RefreshCw, Mic, Users, AlertCircle, FileAudio, Scissors, FileSpreadsheet, ZoomIn, Activity, Package, Trash2, Gauge, BrainCircuit, Wand2, Layers, CheckCircle2, XCircle, FileMusic, ArrowRight, Merge, Link2, Link2Off, Move, Plus, MousePointer2, MessageSquare, AlertTriangle, SkipBack, SkipForward, Square, Eye, EyeOff, Volume2, Sliders, X, Flag, FileText, Wand, PenTool, ClipboardPaste, ChevronDown, ListChecks, FileOutput, BarChart2, Info, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Globe, Link, Search, FolderInput } from 'https://esm.sh/lucide-react@0.294.0?deps=react@18.2.0';
 
-        // Web Worker for Transformers.js (AI)
+        // --- GLOBAL UTILS ---
         const workerScript = `
         import { pipeline } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.16.0';
         let transcriber = null;
@@ -67,8 +52,184 @@
                     self.postMessage({ type: 'result', id, text: output.text });
                 } catch (e) { self.postMessage({ type: 'result', id, text: "" }); }
             }
+        };`;
+
+        let audioContextInstance = null;
+        const getAudioContext = async () => { 
+            if (!audioContextInstance) { 
+                const Ctx = window.AudioContext || window.webkitAudioContext; 
+                audioContextInstance = new Ctx(); 
+            } 
+            if (audioContextInstance.state === 'suspended') { 
+                try { await audioContextInstance.resume(); } catch (e) {} 
+            } 
+            return audioContextInstance; 
         };
-        `;
+
+        function formatTime(seconds) { 
+            if (seconds < 0 || isNaN(seconds)) return "--:--:--"; 
+            const h = Math.floor(seconds / 3600); 
+            const m = Math.floor((seconds % 3600) / 60); 
+            const s = Math.floor(seconds % 60); 
+            const ms = Math.floor((seconds % 1) * 1000); 
+            return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')}`; 
+        }
+
+        const calculateSimilarity = (recText, scriptText) => { 
+            if (!recText || !scriptText) return 0; 
+            const s1 = recText.toLowerCase().replace(/[^a-z0-9]/g, ''); 
+            const s2 = scriptText.toLowerCase().replace(/[^a-z0-9]/g, ''); 
+            if (s1.length === 0 && s2.length === 0) return 100; 
+            if (s1.length === 0 || s2.length === 0) return 0; 
+            const track = Array(s2.length + 1).fill(null).map(() => Array(s1.length + 1).fill(null)); 
+            for (let i = 0; i <= s1.length; i += 1) track[0][i] = i; 
+            for (let j = 0; j <= s2.length; j += 1) track[j][0] = j; 
+            for (let j = 1; j <= s2.length; j += 1) { 
+                for (let i = 1; i <= s1.length; i += 1) { 
+                    const indicator = s1[i - 1] === s2[j - 1] ? 0 : 1; 
+                    track[j][i] = Math.min(track[j][i - 1] + 1, track[j - 1][i] + 1, track[j - 1][i - 1] + indicator); 
+                } 
+            } 
+            const maxLength = Math.max(s1.length, s2.length); 
+            return Math.round((1 - track[s2.length][s1.length] / maxLength) * 100); 
+        };
+
+        const parseCSV = (text) => { 
+            const rows = []; let currentRow = []; let currentCell = ''; let insideQuote = false; 
+            for (let i = 0; i < text.length; i++) { 
+                const char = text[i]; const nextChar = text[i + 1]; 
+                if (char === '"') { 
+                    if (insideQuote && nextChar === '"') { currentCell += '"'; i++; } else { insideQuote = !insideQuote; } 
+                } else if (char === ',' && !insideQuote) { 
+                    currentRow.push(currentCell.trim()); currentCell = ''; 
+                } else if ((char === '\r' || char === '\n') && !insideQuote) { 
+                    if (currentCell || currentRow.length > 0) { currentRow.push(currentCell.trim()); rows.push(currentRow); } 
+                    currentRow = []; currentCell = ''; 
+                    if (char === '\r' && nextChar === '\n') i++; 
+                } else { currentCell += char; } 
+            } 
+            if (currentCell || currentRow.length > 0) { currentRow.push(currentCell.trim()); rows.push(currentRow); } 
+            return rows; 
+        };
+
+        const concatAudioBuffers = (buffers, context) => {
+            if (buffers.length === 0) return context.createBuffer(1, 1, 44100);
+            let totalLength = 0;
+            for (let b of buffers) totalLength += b.length;
+            let maxChannels = 1;
+            for (let b of buffers) {
+                if (b.numberOfChannels > maxChannels) maxChannels = b.numberOfChannels;
+            }
+            const result = context.createBuffer(maxChannels, totalLength, buffers[0].sampleRate);
+            let offset = 0;
+            for (let b of buffers) {
+                for (let ch = 0; ch < maxChannels; ch++) {
+                    if (ch < b.numberOfChannels) {
+                        result.getChannelData(ch).set(b.getChannelData(ch), offset);
+                    } else {
+                        if (b.numberOfChannels === 1) {
+                            result.getChannelData(ch).set(b.getChannelData(0), offset);
+                        }
+                    }
+                }
+                offset += b.length;
+            }
+            return result;
+        };
+
+        const encodeWAV = (samples, numChannels, sampleRate) => { 
+            const buffer = new ArrayBuffer(44 + samples.length * 2); 
+            const view = new DataView(buffer); 
+            const writeString = (view, offset, string) => { for (let i = 0; i < string.length; i++) { view.setUint8(offset + i, string.charCodeAt(i)); } }; 
+            writeString(view, 0, 'RIFF'); view.setUint32(4, 36 + samples.length * 2, true); 
+            writeString(view, 8, 'WAVE'); writeString(view, 12, 'fmt '); 
+            view.setUint32(16, 16, true); view.setUint16(20, 1, true); 
+            view.setUint16(22, numChannels, true); view.setUint32(24, sampleRate, true); 
+            view.setUint32(28, sampleRate * numChannels * 2, true); 
+            view.setUint16(32, numChannels * 2, true); view.setUint16(34, 16, true); 
+            writeString(view, 36, 'data'); view.setUint32(40, samples.length * 2, true); 
+            for (let i = 0; i < samples.length; i++) { 
+                let s = Math.max(-1, Math.min(1, samples[i])); 
+                s = s < 0 ? s * 0x8000 : s * 0x7FFF; 
+                view.setInt16(44 + i * 2, s, true); 
+            } 
+            return new Blob([view], { type: 'audio/wav' }); 
+        };
+
+        const encodeMP3 = (channels, sampleRate) => {
+            const numChannels = channels.length;
+            const mp3encoder = new lamejs.Mp3Encoder(numChannels, sampleRate, 192);
+            const leftRaw = channels[0];
+            const rightRaw = numChannels > 1 ? channels[1] : undefined;
+            const length = leftRaw.length;
+            const left = new Int16Array(length);
+            const right = numChannels > 1 ? new Int16Array(length) : undefined;
+            for(let i=0; i<length; i++) {
+                let s = Math.max(-1, Math.min(1, leftRaw[i]));
+                left[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+                if (right) {
+                    let s2 = Math.max(-1, Math.min(1, rightRaw[i]));
+                    right[i] = s2 < 0 ? s2 * 0x8000 : s2 * 0x7FFF;
+                }
+            }
+            const mp3Data = [];
+            const mp3buf = mp3encoder.encodeBuffer(left, right);
+            if (mp3buf.length > 0) mp3Data.push(mp3buf);
+            const endBuf = mp3encoder.flush();
+            if (endBuf.length > 0) mp3Data.push(endBuf);
+            return new Blob(mp3Data, { type: 'audio/mp3' });
+        };
+
+        const normalizeAudioData = (channelData, targetDB) => { 
+            let sumSquares = 0; 
+            for (let i = 0; i < channelData.length; i++) { sumSquares += channelData[i] * channelData[i]; } 
+            const rms = Math.sqrt(sumSquares / channelData.length); 
+            if (rms < 0.0001) return channelData; 
+            const currentDB = 20 * Math.log10(rms); 
+            const gainDB = targetDB - currentDB; 
+            const gain = Math.pow(10, gainDB / 20); 
+            const newData = new Float32Array(channelData.length); 
+            for (let i = 0; i < channelData.length; i++) { 
+                let val = channelData[i] * gain; 
+                if (val > 1.0) val = 1.0; 
+                if (val < -1.0) val = -1.0; 
+                newData[i] = val; 
+            } 
+            return newData; 
+        };
+
+        const processAudioSegment = async (rawData, sampleRate, options) => { 
+            const offlineCtx = new OfflineAudioContext(1, rawData.length, sampleRate); 
+            const source = offlineCtx.createBufferSource(); 
+            const buffer = offlineCtx.createBuffer(1, rawData.length, sampleRate); 
+            buffer.getChannelData(0).set(rawData); 
+            source.buffer = buffer; 
+            const highPass = offlineCtx.createBiquadFilter(); highPass.type = 'highpass'; highPass.frequency.value = options.highPassFreq; 
+            const deHiss = offlineCtx.createBiquadFilter(); deHiss.type = 'highshelf'; deHiss.frequency.value = options.highShelfGain; 
+            const presence = offlineCtx.createBiquadFilter(); presence.type = 'peaking'; presence.frequency.value = 2500; presence.Q.value = 1.0; presence.gain.value = options.peakingGain; 
+            source.connect(highPass); highPass.connect(deHiss); deHiss.connect(presence); presence.connect(offlineCtx.destination); 
+            source.start(); 
+            const rendered = await offlineCtx.startRendering(); 
+            return rendered.getChannelData(0); 
+        };
+        
+        const copyToClipboard = (text, successMessage = "已複製！") => {
+            const textArea = document.createElement("textarea");
+            textArea.value = text;
+            textArea.style.position = "fixed";
+            textArea.style.opacity = "0";
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            try {
+                document.execCommand('copy');
+                alert(successMessage);
+            } catch (err) {
+                console.error('Copy failed', err);
+                alert("複製失敗，請手動複製。");
+            }
+            document.body.removeChild(textArea);
+        };
 
         // --- Mini Waveform Component ---
         const MiniWaveform = React.memo(({ marker, audioBuffer, onChange, onPlay }) => {
@@ -76,12 +237,10 @@
             const [hoverType, setHoverType] = useState(null); 
             const dragRef = useRef(null); 
 
-            // Handle missing marker data gracefully
             if (!marker || !audioBuffer) return <div className="w-full h-full bg-slate-900/50 rounded flex items-center justify-center text-xs text-slate-600">無音訊數據</div>;
 
-            const duration = marker.end - marker.start;
+            const windowDuration = Math.max((marker.end - marker.start) * 1.5, 3.0); 
             const center = (marker.start + marker.end) / 2;
-            const windowDuration = Math.max(duration * 1.5, 3.0); 
             const windowStart = Math.max(0, center - windowDuration / 2);
             const windowEnd = Math.min(audioBuffer ? audioBuffer.duration : 0, windowStart + windowDuration);
             const realWindowDuration = windowEnd - windowStart;
@@ -92,32 +251,29 @@
                 const ctx = canvas.getContext('2d');
                 const width = canvas.width;
                 const height = canvas.height;
-
                 ctx.clearRect(0, 0, width, height);
                 ctx.fillStyle = '#0f172a'; 
                 ctx.fillRect(0, 0, width, height);
-
                 const sampleRate = audioBuffer.sampleRate;
                 const startSample = Math.floor(windowStart * sampleRate);
-                const endSample = Math.floor(windowEnd * sampleRate);
                 const channelData = audioBuffer.getChannelData(0);
-                const totalSamples = endSample - startSample;
+                const totalSamples = Math.floor(realWindowDuration * sampleRate);
                 const step = Math.ceil(totalSamples / width);
                 const amp = height / 2;
-
                 ctx.beginPath();
                 ctx.strokeStyle = '#60a5fa'; 
                 ctx.lineWidth = 1;
-
                 for (let i = 0; i < width; i++) {
                     let min = 1.0; let max = -1.0;
                     const currentSampleIdx = startSample + i * step;
-                    
                     if (currentSampleIdx < channelData.length) {
                          for (let j = 0; j < step; j++) {
-                            const datum = channelData[currentSampleIdx + j];
-                            if (datum < min) min = datum;
-                            if (datum > max) max = datum;
+                            const idx = currentSampleIdx + j;
+                            if (idx < channelData.length) {
+                                const datum = channelData[idx];
+                                if (datum < min) min = datum;
+                                if (datum > max) max = datum;
+                            }
                         }
                     }
                     if (min === 1.0) { min = 0; max = 0; } 
@@ -125,28 +281,21 @@
                     ctx.lineTo(i, (1 + max) * amp);
                 }
                 ctx.stroke();
-
                 const x1 = ((marker.start - windowStart) / realWindowDuration) * width;
                 const x2 = ((marker.end - windowStart) / realWindowDuration) * width;
-
                 ctx.fillStyle = 'rgba(239, 68, 68, 0.3)'; 
                 ctx.fillRect(x1, 0, x2 - x1, height);
-
                 ctx.lineWidth = 4;
-                
                 ctx.beginPath();
                 ctx.strokeStyle = hoverType === 'start' ? '#ffffff' : 'rgba(239, 68, 68, 0.8)';
                 ctx.moveTo(x1, 0); ctx.lineTo(x1, height); ctx.stroke();
-
                 ctx.beginPath();
                 ctx.strokeStyle = hoverType === 'end' ? '#ffffff' : 'rgba(239, 68, 68, 0.8)';
                 ctx.moveTo(x2, 0); ctx.lineTo(x2, height); ctx.stroke();
-
                 if (hoverType === 'start' || hoverType === 'end') canvas.style.cursor = 'col-resize';
                 else if (hoverType === 'body') canvas.style.cursor = 'grab';
                 else canvas.style.cursor = 'default';
-
-            }, [marker, audioBuffer, windowStart, windowEnd, hoverType]);
+            }, [marker, audioBuffer, windowStart, realWindowDuration, hoverType]);
 
             const handleMouseMove = (e) => {
                 const canvas = canvasRef.current;
@@ -155,14 +304,12 @@
                 const x = (e.clientX - rect.left) * scaleX;
                 const width = canvas.width;
                 const time = windowStart + (x / width) * realWindowDuration;
-
                 if (dragRef.current) {
-                    const { type, startX, startVal, endVal, offset } = dragRef.current;
+                    const { type, offset } = dragRef.current;
                     let newStart = marker.start;
                     let newEnd = marker.end;
-                    
                     if (type === 'body') {
-                        const duration = endVal - startVal;
+                        const duration = marker.end - marker.start;
                         newStart = time - offset;
                         if (newStart < 0) newStart = 0;
                         if (newStart + duration > audioBuffer.duration) newStart = audioBuffer.duration - duration;
@@ -176,20 +323,17 @@
                          if (newEnd > audioBuffer.duration) newEnd = audioBuffer.duration;
                          if (newEnd <= newStart + 0.05) newEnd = newStart + 0.05;
                     }
-
                     if(onChange) onChange(marker.id, { start: newStart, end: newEnd });
                 } else {
                     const x1 = ((marker.start - windowStart) / realWindowDuration) * width;
                     const x2 = ((marker.end - windowStart) / realWindowDuration) * width;
                     const threshold = 15; 
-
                     if (Math.abs(x - x1) < threshold) setHoverType('start');
                     else if (Math.abs(x - x2) < threshold) setHoverType('end');
                     else if (x > x1 && x < x2) setHoverType('body');
                     else setHoverType(null);
                 }
             };
-
             const handleMouseDown = (e) => {
                 if (!hoverType) return;
                 const canvas = canvasRef.current;
@@ -198,83 +342,30 @@
                 const x = (e.clientX - rect.left) * scaleX;
                 const width = canvas.width;
                 const time = windowStart + (x / width) * realWindowDuration;
-
                 let offset = 0;
-                if (hoverType === 'body') {
-                    offset = time - marker.start;
-                }
-
-                dragRef.current = {
-                    type: hoverType,
-                    startX: x,
-                    startVal: marker.start,
-                    endVal: marker.end,
-                    offset: offset
-                };
-                
+                if (hoverType === 'body') offset = time - marker.start;
+                dragRef.current = { type: hoverType, offset: offset };
                 window.addEventListener('mousemove', handleGlobalMouseMove);
                 window.addEventListener('mouseup', handleGlobalMouseUp);
             };
-
-            const handleGlobalMouseMove = (e) => {
-                if (!dragRef.current || !canvasRef.current) return;
-                const canvas = canvasRef.current;
-                const rect = canvas.getBoundingClientRect();
-                const scaleX = canvas.width / rect.width;
-                const x = (e.clientX - rect.left) * scaleX;
-                const width = canvas.width;
-                
-                let time = windowStart + (x / width) * realWindowDuration;
-                
-                const { type, offset } = dragRef.current;
-                let newStart = marker.start;
-                let newEnd = marker.end;
-                const duration = marker.end - marker.start; 
-
-                if (type === 'body') {
-                     newStart = time - offset;
-                     newEnd = newStart + duration;
-                } else if (type === 'start') {
-                     newStart = Math.min(time, marker.end - 0.05);
-                } else if (type === 'end') {
-                     newEnd = Math.max(time, marker.start + 0.05);
-                }
-                
-                if (newStart < 0) newStart = 0;
-                if (newEnd > audioBuffer.duration) newEnd = audioBuffer.duration;
-                
-                onChange(marker.id, { start: newStart, end: newEnd });
-            };
-
+            const handleGlobalMouseMove = (e) => { if (!dragRef.current || !canvasRef.current) return; };
             const handleGlobalMouseUp = () => {
                 dragRef.current = null;
                 window.removeEventListener('mousemove', handleGlobalMouseMove);
                 window.removeEventListener('mouseup', handleGlobalMouseUp);
             };
-
             useEffect(() => {
                 return () => {
                     window.removeEventListener('mousemove', handleGlobalMouseMove);
                     window.removeEventListener('mouseup', handleGlobalMouseUp);
                 };
             }, []);
-
             return (
-                <canvas 
-                    ref={canvasRef} 
-                    width={360} 
-                    height={80} 
-                    className="rounded border border-slate-600 bg-slate-900 cursor-pointer"
-                    onMouseMove={handleMouseMove}
-                    onMouseDown={handleMouseDown}
-                    onMouseLeave={() => { if(!dragRef.current) setHoverType(null); }}
-                    onDoubleClick={onPlay}
-                    title="拖曳邊緣調整長度，拖曳中間移動位置，雙擊播放"
-                />
+                <canvas ref={canvasRef} width={360} height={80} className="rounded border border-slate-600 bg-slate-900 cursor-pointer" onMouseMove={handleMouseMove} onMouseDown={handleMouseDown} onMouseLeave={() => { if(!dragRef.current) setHoverType(null); }} onDoubleClick={onPlay} title="拖曳邊緣調整長度，拖曳中間移動位置，雙擊播放" />
             );
         });
 
-        // --- Main App ---
+        // --- MAIN APP ---
         const App = () => {
             const [viewMode, setViewMode] = useState('splitter'); 
             const [audioBuffer, setAudioBuffer] = useState(null);
@@ -304,35 +395,27 @@
             const [padding, setPadding] = useState(0.1);
             const [speakerMode, setSpeakerMode] = useState(true);
             const [exportAsRange, setExportAsRange] = useState(true); 
-            
-            // CSV Encoding State
+            const [progress, setProgress] = useState(0); 
             const [csvEncoding, setCsvEncoding] = useState('utf-8');
-
-            // Normalize Settings
             const [doNormalize, setDoNormalize] = useState(true);
             const [targetLoudness, setTargetLoudness] = useState(-16);
-            
-            // Denoise UI State
             const [expandedDenoiseId, setExpandedDenoiseId] = useState(null);
-            
-            // Issue Flag UI State
             const [flagMenuId, setFlagMenuId] = useState(null);
-
-            // Single Input State
             const [singleInput, setSingleInput] = useState({ filename: '', content: '', secondary: '' });
             const [singleFile, setSingleFile] = useState(null);
             const [rawPaste, setRawPaste] = useState('');
-
-            // Batch QC State
             const [qcList, setQcList] = useState([]); 
             const [batchQcTextRaw, setBatchQcTextRaw] = useState('');
             const [qcAudioFiles, setQcAudioFiles] = useState({}); 
+            const [qcSortedFilenames, setQcSortedFilenames] = useState([]);
             const [currentlyPlayingQcId, setCurrentlyPlayingQcId] = useState(null);
-
-            // Loudness Analyzer State
+            const [webHtml, setWebHtml] = useState('');
+            const [userTargetList, setUserTargetList] = useState('');
+            const [webMappingResult, setWebMappingResult] = useState([]);
+            const [webParsedList, setWebParsedList] = useState([]); 
+            const [webAudioFiles, setWebAudioFiles] = useState({}); 
             const [analyzerResults, setAnalyzerResults] = useState([]);
             const [isAnalyzing, setIsAnalyzing] = useState(false);
-
             const [zoomLevel, setZoomLevel] = useState(1);
             const [ampScale, setAmpScale] = useState(1);
             const [scrollLeft, setScrollLeft] = useState(0); 
@@ -349,12 +432,9 @@
             const startTimeRef = useRef(0);
             const jsZipRef = useRef(window.JSZip);
             const workerRef = useRef(null);
-            
             const [showBigWaveform, setShowBigWaveform] = useState(false);
-
             const missingCount = useMemo(() => markers.filter(m => m.qualityStatus === 'missing').length, [markers]);
-            const issueCount = useMemo(() => markers.filter(m => m.hasIssue).length, [markers]);
-
+            
             useEffect(() => {
                 const blob = new Blob([workerScript], { type: 'application/javascript' });
                 const url = URL.createObjectURL(blob);
@@ -377,12 +457,8 @@
                 return () => workerRef.current?.terminate();
             }, []);
 
-            // Close menus on click outside
             useEffect(() => {
-                const handleClickOutside = () => {
-                    setExpandedDenoiseId(null);
-                    setFlagMenuId(null);
-                };
+                const handleClickOutside = () => { setExpandedDenoiseId(null); setFlagMenuId(null); };
                 document.addEventListener('click', handleClickOutside);
                 return () => document.removeEventListener('click', handleClickOutside);
             }, []);
@@ -399,153 +475,361 @@
                 return () => window.removeEventListener('keydown', handleKeyDown);
             }, [activeMarkerIndex, markers, isPlaying, audioBuffer, viewMode]);
 
-            const handleMarkerUpdate = useCallback((id, newTiming) => {
-                setEditMode('manual'); 
-                setMarkers(prev => prev.map(m => {
-                    if (m.id === id) {
-                        return { 
-                            ...m, 
-                            start: newTiming.start, 
-                            end: newTiming.end, 
-                            duration: newTiming.end - newTiming.start,
-                            formattedDuration: (newTiming.end - newTiming.start).toFixed(3) + 's'
-                        };
-                    }
-                    return m;
-                }));
-            }, []);
+            // =================================================================================
+            // HANDLERS (Must be inside App to access state)
+            // =================================================================================
             
-            const toggleMarkerDenoise = (id) => {
-                setEditMode('manual');
-                setMarkers(prev => prev.map(m => {
-                    if (m.id === id) {
-                        const defaultParams = { highPassFreq: 100, highShelfGain: -10, peakingGain: 3 };
-                        return { 
-                            ...m, 
-                            isDenoised: !m.isDenoised,
-                            denoiseParams: m.denoiseParams || defaultParams
-                        };
+            const resolveMarkerData = (marker, index) => { 
+                if (marker.lockedText) return marker.lockedText; 
+                if (scriptData.length > 0 && scriptData[index]) { 
+                    const row = scriptData[index]; 
+                    return { name: row.primary, secondary: row.secondary, previewFileName: row.targetFileName }; 
+                } 
+                const fallbackName = speakerMode ? (index % 2 === 0 ? "Speaker A" : "Speaker B") : `Marker ${index + 1}`; 
+                return { name: marker.name || fallbackName, secondary: marker.secondary || "", previewFileName: marker.previewFileName || `${(index+1).toString().padStart(2, '0')}_${fallbackName.replace(/\s+/g, '_')}` }; 
+            };
+
+            const processBufferToBlob = async (buffer, denoiseParams) => {
+                const sampleRate = buffer.sampleRate;
+                const numChannels = buffer.numberOfChannels;
+                let processedChannels = [];
+                for (let c = 0; c < numChannels; c++) {
+                    let rawData = buffer.getChannelData(c);
+                    if (denoiseParams) {
+                        const opts = { highPassFreq: denoiseParams.highPassFreq, highShelfGain: denoiseParams.highShelfGain, peakingGain: denoiseParams.peakingGain };
+                        rawData = await processAudioSegment(rawData, sampleRate, opts);
                     }
-                    return m;
-                }));
-            };
-
-            const setMarkerIssue = (id, reason) => {
-                setEditMode('manual');
-                setMarkers(prev => prev.map(m => {
-                    if (m.id === id) return { ...m, hasIssue: true, issueReason: reason };
-                    return m;
-                }));
-                setFlagMenuId(null);
-            };
-
-            const clearMarkerIssue = (id) => {
-                setEditMode('manual');
-                setMarkers(prev => prev.map(m => {
-                    if (m.id === id) return { ...m, hasIssue: false, issueReason: null };
-                    return m;
-                }));
-                setFlagMenuId(null);
-            };
-
-            const updateMarkerDenoiseParams = (id, newParams) => {
-                setEditMode('manual');
-                setMarkers(prev => prev.map(m => {
-                    if (m.id === id) {
-                        return { ...m, denoiseParams: { ...m.denoiseParams, ...newParams } };
+                    if (doNormalize) {
+                        processedChannels.push(normalizeAudioData(rawData, targetLoudness));
+                    } else {
+                        processedChannels.push(rawData);
                     }
-                    return m;
-                }));
+                }
+                let interleaved;
+                if (numChannels === 2) {
+                    interleaved = new Float32Array(buffer.length * 2);
+                    for (let i = 0; i < buffer.length; i++) {
+                        interleaved[i * 2] = processedChannels[0][i];
+                        interleaved[i * 2 + 1] = processedChannels[1][i];
+                    }
+                } else {
+                    interleaved = processedChannels[0];
+                }
+                return encodeWAV(interleaved, numChannels, sampleRate);
             };
 
+            const getAudioSegmentBlobAsync = async (start, end, denoiseParams, format = 'wav') => { 
+                if (!audioBuffer) return null; 
+                const pad = 0.1; 
+                const pStart = Math.max(0, start - pad); 
+                const pEnd = Math.min(audioBuffer.duration, end + pad); 
+                const sampleRate = audioBuffer.sampleRate; 
+                const startSample = Math.floor(pStart * sampleRate); 
+                const endSample = Math.floor(pEnd * sampleRate); 
+                const length = endSample - startSample; 
+                if (length <= 0) return null; 
+                const numChannels = audioBuffer.numberOfChannels; 
+                let processedChannels = []; 
+                for (let c = 0; c < numChannels; c++) { 
+                    let rawData = audioBuffer.getChannelData(c).slice(startSample, startSample + length); 
+                    if (denoiseParams) { 
+                        try { 
+                            const opts = { highPassFreq: denoiseParams.highPassFreq, highShelfGain: denoiseParams.highShelfGain, peakingGain: denoiseParams.peakingGain }; 
+                            rawData = await processAudioSegment(rawData, sampleRate, opts); 
+                        } catch(e) { console.error("Denoise failed", e); } 
+                    } 
+                    if (doNormalize) { 
+                        processedChannels.push(normalizeAudioData(rawData, targetLoudness)); 
+                    } else { 
+                        processedChannels.push(rawData); 
+                    } 
+                } 
+                if (format === 'mp3') {
+                     return encodeMP3(processedChannels, sampleRate);
+                } else {
+                     let interleaved; 
+                     if (numChannels === 2) { 
+                         interleaved = new Float32Array(length * 2); 
+                         for (let i = 0; i < length; i++) { 
+                             interleaved[i * 2] = processedChannels[0][i]; 
+                             interleaved[i * 2 + 1] = processedChannels[1][i]; 
+                         } 
+                     } else { 
+                         interleaved = processedChannels[0]; 
+                     } 
+                     return encodeWAV(interleaved, numChannels, sampleRate); 
+                }
+            };
+            
+            // --- UI Action Functions ---
+            const downloadIssueReport = () => { 
+                const issues = markers.filter(m => m.hasIssue); 
+                if (issues.length === 0) { alert("目前沒有標記任何問題段落。"); return; } 
+                let content = `問題報告 - ${fileName}\n產生時間: ${new Date().toLocaleString()}\n\n`; 
+                issues.forEach((m) => { 
+                    const index = markers.findIndex(mk => mk.id === m.id); 
+                    const res = resolveMarkerData(m, index); 
+                    content += `[ID: ${m.id}] ${res.name}\n`; 
+                    if (m.issueReason) content += `問題類型: ${m.issueReason}\n`; 
+                    content += `時間: ${m.formattedStart} - ${m.formattedDuration}\n`; 
+                    content += `檔名: ${res.previewFileName}\n`; 
+                    if (res.secondary) content += `族語: ${res.secondary}\n`; 
+                    content += `----------------------------------------\n`; 
+                }); 
+                const blob = new Blob([content], { type: 'text/plain;charset=utf-8' }); 
+                const url = URL.createObjectURL(blob); 
+                const link = document.createElement('a'); 
+                link.href = url; 
+                link.setAttribute('download', `${fileName.split('.')[0]}_issues.txt`); 
+                document.body.appendChild(link); 
+                link.click(); 
+                document.body.removeChild(link); 
+            };
+            const downloadAllZip = async (format = 'wav') => { 
+                if (!jsZipRef.current || markers.length === 0) return; 
+                setIsZipping(true); 
+                const zip = new jsZipRef.current(); 
+                const folderName = `${fileName.split('.')[0]}_sliced_${format}`; 
+                const folder = zip.folder(folderName); 
+                let count = 0; 
+                for (let i = 0; i < markers.length; i++) { 
+                    const marker = markers[i]; 
+                    if (marker.qualityStatus === 'missing') continue; 
+                    const resolved = resolveMarkerData(marker, i); 
+                    const blob = await getAudioSegmentBlobAsync(marker.start, marker.end, marker.isDenoised ? marker.denoiseParams : null, format); 
+                    if (blob) { 
+                        let name = resolved.previewFileName; 
+                        name = name.replace(/\.(wav|mp3|m4a)$/i, ''); 
+                        name += `.${format}`; 
+                        folder.file(name, blob); 
+                        count++; 
+                    } 
+                } 
+                if (count === 0) { alert("沒有可下載的音檔"); setIsZipping(false); return; } 
+                try { 
+                    const content = await zip.generateAsync({ type: "blob" }); 
+                    const url = URL.createObjectURL(content); 
+                    const link = document.createElement('a'); link.href = url; link.setAttribute('download', `${folderName}.zip`); document.body.appendChild(link); link.click(); document.body.removeChild(link); 
+                } catch (err) { alert("打包失敗"); } finally { setIsZipping(false); } 
+            };
+            const exportCSV = () => { 
+                if (markers.length === 0) return; 
+                let content = "Name\tStart\tDuration\tTime Format\tType\tDescription\r\n"; 
+                markers.forEach((marker, index) => { 
+                    if (marker.qualityStatus === 'missing') return; 
+                    const resolved = resolveMarkerData(marker, index); 
+                    const start = marker.start.toFixed(3); 
+                    const duration = exportAsRange ? marker.duration.toFixed(3) : "0.000"; 
+                    const safeName = resolved.name.replace(/\t/g, " "); 
+                    const desc = resolved.secondary ? resolved.secondary.replace(/\t/g, " ") : resolved.previewFileName; 
+                    content += `${safeName}\t${start}\t${duration}\tdecimal\tCue\t${desc}\r\n`; 
+                }); 
+                const blob = new Blob(["\uFEFF" + content], { type: 'text/csv;charset=utf-8;' }); 
+                const url = URL.createObjectURL(blob); 
+                const link = document.createElement('a'); 
+                link.href = url; 
+                link.setAttribute('download', `${fileName.split('.')[0]}_markers.csv`); 
+                document.body.appendChild(link); 
+                link.click(); 
+                document.body.removeChild(link); 
+            };
+            const downloadQcZip = async () => { if (!jsZipRef.current || qcList.length === 0) return; setIsZipping(true); const zip = new jsZipRef.current(); const folder = zip.folder("Batch_Processed"); let count = 0; for (const item of qcList) { if (item.status === 'missing' || !item.audioBuffer) continue; const blob = await processBufferToBlob(item.audioBuffer, item.isDenoised ? item.denoiseParams : null); let name = item.targetName; if (!name.toLowerCase().endsWith('.wav')) name += '.wav'; folder.file(name, blob); count++; } if (count === 0) { alert("沒有可處理的檔案"); setIsZipping(false); return; } const content = await zip.generateAsync({ type: "blob" }); const link = document.createElement('a'); link.href = URL.createObjectURL(content); link.download = "Batch_Output.zip"; link.click(); setIsZipping(false); };
+            const downloadQcReport = () => { let content = `驗收報表 (QC Report)\n日期: ${new Date().toLocaleString()}\n\n`; content += `ID, 原始檔名, 目標檔名, 狀態, 問題標記, 內容\n`; qcList.forEach(item => { const status = item.status === 'ready' ? 'OK' : 'Missing'; const issue = item.hasIssue ? item.issueReason : 'None'; content += `${item.id}, ${item.originalName}, ${item.targetName}, ${status}, ${issue}, ${item.content}\n`; }); const blob = new Blob([content], { type: 'text/csv;charset=utf-8' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = "QC_Report.csv"; link.click(); };
+            const downloadAllZipWav = () => downloadAllZip('wav');
+            const downloadAllZipMp3 = () => downloadAllZip('mp3');
+            
+            const handleMarkerUpdate = useCallback((id, newTiming) => { setEditMode('manual'); setMarkers(prev => prev.map(m => { if (m.id === id) { return { ...m, start: newTiming.start, end: newTiming.end, duration: newTiming.end - newTiming.start, formattedDuration: (newTiming.end - newTiming.start).toFixed(3) + 's' }; } return m; })); }, []);
+            const runRecognition = async () => { if (aiStatus !== 'ready' || markers.length === 0 || !audioBuffer) return; setIsRecognizing(true); for (const marker of markers) { if (marker.qualityStatus === 'missing') continue; const sampleRate = audioBuffer.sampleRate; const startSample = Math.floor(marker.start * sampleRate); const endSample = Math.floor(marker.end * sampleRate); const length = endSample - startSample; if (length > 0) { const channelData = audioBuffer.getChannelData(0).slice(startSample, startSample + length); workerRef.current.postMessage({ type: 'run', audio: channelData, id: marker.id }); } } setTimeout(() => setIsRecognizing(false), 1000); };
+            const toggleMarkerDenoise = (id) => { setEditMode('manual'); setMarkers(prev => prev.map(m => { if (m.id === id) { const defaultParams = { highPassFreq: 100, highShelfGain: -10, peakingGain: 3 }; return { ...m, isDenoised: !m.isDenoised, denoiseParams: m.denoiseParams || defaultParams }; } return m; })); };
+            const setMarkerIssue = (id, reason) => { setEditMode('manual'); setMarkers(prev => prev.map(m => { if (m.id === id) return { ...m, hasIssue: true, issueReason: reason }; return m; })); setFlagMenuId(null); };
+            const clearMarkerIssue = (id) => { setEditMode('manual'); setMarkers(prev => prev.map(m => { if (m.id === id) return { ...m, hasIssue: false, issueReason: null }; return m; })); setFlagMenuId(null); };
+            const updateMarkerDenoiseParams = (id, newParams) => { setEditMode('manual'); setMarkers(prev => prev.map(m => { if (m.id === id) { return { ...m, denoiseParams: { ...m.denoiseParams, ...newParams } }; } return m; })); };
+            const deleteMarker = (idToDelete) => { setEditMode('manual'); setMarkers(prev => prev.filter(m => m.id !== idToDelete)); };
             const loadAiModel = () => { if (workerRef.current) workerRef.current.postMessage({ type: 'load' }); };
-            const getAudioContext = async () => { if (!audioContextRef.current) { const Ctx = window.AudioContext || window.webkitAudioContext; audioContextRef.current = new Ctx(); } if (audioContextRef.current.state === 'suspended') { try { await audioContextRef.current.resume(); } catch (e) {} } return audioContextRef.current; };
-            const parseCSV = (text) => { const rows = []; let currentRow = []; let currentCell = ''; let insideQuote = false; for (let i = 0; i < text.length; i++) { const char = text[i]; const nextChar = text[i + 1]; if (char === '"') { if (insideQuote && nextChar === '"') { currentCell += '"'; i++; } else { insideQuote = !insideQuote; } } else if (char === ',' && !insideQuote) { currentRow.push(currentCell.trim()); currentCell = ''; } else if ((char === '\r' || char === '\n') && !insideQuote) { if (currentCell || currentRow.length > 0) { currentRow.push(currentCell.trim()); rows.push(currentRow); } currentRow = []; currentCell = ''; if (char === '\r' && nextChar === '\n') i++; } else { currentCell += char; } } if (currentCell || currentRow.length > 0) { currentRow.push(currentCell.trim()); rows.push(currentRow); } return rows; };
-            
-            // --- FIXED: Robust Concatenation with Mono/Stereo Handling ---
-            const concatAudioBuffers = (buffers, context) => {
-                if (buffers.length === 0) return context.createBuffer(1, 1, 44100);
-                
-                // 1. Calculate Total Length
-                let totalLength = 0;
-                for (let b of buffers) totalLength += b.length;
-                
-                // 2. Determine Max Channels (e.g. if one file is Stereo, output is Stereo)
-                let maxChannels = 1;
-                for (let b of buffers) {
-                    if (b.numberOfChannels > maxChannels) maxChannels = b.numberOfChannels;
-                }
 
-                // 3. Create Result Buffer
-                const result = context.createBuffer(maxChannels, totalLength, buffers[0].sampleRate);
-                
-                // 4. Copy and Mix
-                let offset = 0;
-                for (let b of buffers) {
-                    for (let ch = 0; ch < maxChannels; ch++) {
-                        // If source has this channel, copy it
-                        if (ch < b.numberOfChannels) {
-                            result.getChannelData(ch).set(b.getChannelData(ch), offset);
+            const handleBatchQcTextChange = (e) => { setBatchQcTextRaw(e.target.value); };
+            const handleBatchQcFilesUpload = (e) => { const files = Array.from(e.target.files); if (files.length === 0) return; const newMap = { ...qcAudioFiles }; files.forEach(f => { newMap[f.name] = f; }); setQcAudioFiles(newMap); e.target.value = null; };
+            const processBatchQcList = async () => { 
+                if (!batchQcTextRaw.trim()) { alert("請先貼上資料"); return; } 
+                setIsProcessing(true); 
+                try { 
+                    const ctx = await getAudioContext(); 
+                    const lines = batchQcTextRaw.split('\n').filter(l => l.trim()); 
+                    const sortedFilenames = Object.keys(qcAudioFiles).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })); 
+                    const newList = []; 
+                    for (let i = 0; i < lines.length; i++) { 
+                        const line = lines[i]; 
+                        let match = line.match(/^([^\s]+)[\s\t]+([^\s]+\.(?:mp3|wav|m4a|ogg))[\s\t]+(.+)$/i);
+                        let targetName = "", originalName = "", content = "", matchedFile = null, buffer = null, status = 'missing';
+                        let fileIndex = -1;
+                        if (match) {
+                            targetName = match[1]; originalName = match[2]; content = match[3]; matchedFile = qcAudioFiles[originalName]; 
+                            fileIndex = sortedFilenames.indexOf(originalName);
                         } else {
-                            // If source is Mono (1ch) but output is Stereo (2ch), 
-                            // duplicate the 1st channel to the new channel (e.g. Center to R)
-                            // This fixes the "Mono file becomes left-ear only" bug
-                            if (b.numberOfChannels === 1) {
-                                result.getChannelData(ch).set(b.getChannelData(0), offset);
-                            } else {
-                                // Otherwise, silence
-                            }
+                            match = line.match(/^([^\s]+)[\s\t]+(.+)$/s);
+                            if (match) { targetName = match[1]; content = match[2]; } else { targetName = `track_${i+1}`; content = line; }
+                            if (i < sortedFilenames.length) { 
+                                originalName = sortedFilenames[i]; 
+                                matchedFile = qcAudioFiles[originalName];
+                                fileIndex = i; 
+                            } else { originalName = "(無)"; }
                         }
-                    }
-                    offset += b.length;
-                }
-                return result;
+                        if (matchedFile) { 
+                            try { const ab = await matchedFile.arrayBuffer(); buffer = await ctx.decodeAudioData(ab); status = 'ready'; } catch (e) { console.error("Decode fail", originalName); status = 'error'; } 
+                        } 
+                        newList.push({ id: i + 1, fileIndex: fileIndex, originalName: originalName, targetName: targetName, content: content, audioBuffer: buffer, status: status, isDenoised: false, denoiseParams: { highPassFreq: 100, highShelfGain: -10, peakingGain: 3 }, hasIssue: false, issueReason: null }); 
+                    } 
+                    setQcList(newList); 
+                } catch (e) { console.error(e); alert("處理發生錯誤"); } finally { setIsProcessing(false); } 
             };
             
-            const handleScriptUpload = async (e) => { const file = e.target.files[0]; if (!file) return; try { const buffer = await file.arrayBuffer(); const decoder = new TextDecoder(csvEncoding); const text = decoder.decode(buffer); const rows = parseCSV(text); if (rows.length < 2) { alert("CSV 格式錯誤或無內容"); return; } const headers = rows[0].map(h => h.trim().toLowerCase()); let sourceFileIdx = headers.indexOf('filename'); let targetFileIdx = headers.indexOf('new_filename'); if (sourceFileIdx === -1) sourceFileIdx = headers.findIndex(h => h.includes('file')); const contentIdx = 0; const data = rows.slice(1).map((row, i) => { const primary = row[contentIdx] || ""; let sourceFileName = ""; if (sourceFileIdx !== -1 && row[sourceFileIdx]) sourceFileName = row[sourceFileIdx].trim(); let targetFileName = ""; if (targetFileIdx !== -1 && row[targetFileIdx]) targetFileName = row[targetFileIdx].trim(); if (!targetFileName && primary) targetFileName = `${(i+1).toString().padStart(3, '0')}_${primary.replace(/[\\/:*?"<>|]/g, '')}`; let secondary = ""; if (targetFileIdx !== -1 && targetFileIdx + 1 < row.length && row[targetFileIdx + 1]) { secondary = row[targetFileIdx + 1].trim(); } if (!secondary) { for (let k = row.length - 1; k >= 0; k--) { const cell = row[k] ? row[k].trim() : ""; if (cell && k !== contentIdx && k !== sourceFileIdx && k !== targetFileIdx) { secondary = cell; break; } } } return { id: i + 1, primary, secondary, sourceFileName, targetFileName, raw: row }; }).filter(item => item.primary || item.secondary); const uniqueNames = [...new Set(data.map(d => d.sourceFileName).filter(Boolean))]; setUniqueFileNames(uniqueNames); setScriptData(data); setScriptFileName(file.name); } catch (err) { console.error(err); alert("讀取 CSV 失敗，請檢查編碼設定。"); } e.target.value = null; };
+            const handleQcTargetShift = (id, amount) => {
+                setQcList(prev => prev.map(item => {
+                    if (item.id === id) {
+                        const newName = item.targetName.replace(/(\d+)/, (match) => {
+                            let num = parseInt(match, 10);
+                            num += amount;
+                            if (num < 0) num = 0;
+                            const len = match.length;
+                            let s = num.toString();
+                            if (match.startsWith('0') && s.length < len) { s = s.padStart(len, '0'); }
+                            return s;
+                        });
+                        return { ...item, targetName: newName };
+                    }
+                    return item;
+                }));
+            };
+
+            const toggleQcDenoise = (id) => { setQcList(prev => prev.map(item => item.id === id ? { ...item, isDenoised: !item.isDenoised } : item)); };
+            const setQcIssue = (id, reason) => { setQcList(prev => prev.map(item => item.id === id ? { ...item, hasIssue: true, issueReason: reason } : item)); setFlagMenuId(null); };
+            const clearQcIssue = (id) => { setQcList(prev => prev.map(item => item.id === id ? { ...item, hasIssue: false, issueReason: null } : item)); setFlagMenuId(null); };
+            const playQcItem = async (item) => { if (!item.audioBuffer) return; if (batchAudioRef.current) { batchAudioRef.current.pause(); batchAudioRef.current = new Audio(); } if (currentlyPlayingQcId === item.id) { setCurrentlyPlayingQcId(null); return; } let wavBlob; if (item.isDenoised) { wavBlob = await processBufferToBlob(item.audioBuffer, item.denoiseParams); } else { wavBlob = await processBufferToBlob(item.audioBuffer, null); } const url = URL.createObjectURL(wavBlob); batchAudioRef.current.src = url; batchAudioRef.current.play(); setCurrentlyPlayingQcId(item.id); batchAudioRef.current.onended = () => setCurrentlyPlayingQcId(null); };
+            
+            // --- WEB PARSER ---
+            const handleWebAudioUpload = (e) => {
+                const files = Array.from(e.target.files);
+                if (files.length === 0) return;
+                const newMap = { ...webAudioFiles };
+                files.forEach(f => newMap[f.name] = f); 
+                setWebAudioFiles(newMap);
+                e.target.value = null; 
+            };
+
+            const handleHtmlParse = async () => { if (!webHtml) return; const doc = new DOMParser().parseFromString(webHtml, 'text/html'); let results = []; const sources = Array.from(doc.querySelectorAll('#audioSet audio source')); const abList = Array.from(doc.querySelectorAll('div.read-sentence.Ab')); const chList = Array.from(doc.querySelectorAll('div.read-sentence.Ch')); if (sources.length > 0 && (abList.length > 0 || chList.length > 0)) { sources.forEach((el, i) => { const src = el.getAttribute('src'); if (src) { const filename = src.split('/').pop(); const ab = abList[i] ? abList[i].textContent.trim() : ""; const ch = chList[i] ? chList[i].textContent.trim() : ""; const text = `${ab} ${ch}`.trim(); if (filename) results.push({ file: filename, text: text }); } }); setProgress(100); } else { const allElements = Array.from(doc.querySelectorAll('*')); const total = allElements.length; const chunkSize = 200; for (let i = 0; i < total; i += chunkSize) { const chunk = allElements.slice(i, i + chunkSize); chunk.forEach(el => { let audioSrc = ""; let text = ""; const src = el.getAttribute('src') || el.getAttribute('href') || el.getAttribute('onclick') || ""; const match = src.match(/['"]?([^'"]+\.(mp3|wav|m4a))['"]?/i); if (match) { audioSrc = match[1]; let container = el.parentElement; let attempts = 0; while(container && container.innerText.trim().length < 2 && container.tagName !== 'BODY' && attempts < 3) { container = container.parentElement; attempts++; } if (container) { text = container.innerText.replace(src, '').replace(audioSrc, '').trim(); text = text.replace(/\s+/g, ' ').trim(); } const filename = audioSrc.split('/').pop(); if (filename && text && !results.find(r => r.file === filename)) { results.push({ file: filename, text: text }); } } }); setProgress(Math.round(((i + chunk.length) / total) * 100)); await new Promise(r => setTimeout(r, 0)); } } setWebMappingResult(results); };
+            
+            const handleWebAutoMatch = async () => {
+                if (!userTargetList || webMappingResult.length === 0) return;
+                setIsProcessing(true);
+                setProgress(0);
+                await new Promise(r => setTimeout(r, 50));
+
+                const userLines = userTargetList.split('\n').filter(l => l.trim());
+                const total = userLines.length;
+                const mapped = [];
+                const chunkSize = 20;
+
+                for (let i = 0; i < total; i += chunkSize) {
+                    const chunk = userLines.slice(i, i + chunkSize);
+                    chunk.forEach((line) => {
+                        const match = line.match(/^([^\s]+)[\s\t]+(.+)$/s);
+                        if (match) {
+                            const targetName = match[1];
+                            const content = match[2].trim();
+                            let bestMatch = null;
+                            let bestScore = 0;
+                            
+                            webMappingResult.forEach(webItem => {
+                                const sim = calculateSimilarity(webItem.text, content);
+                                if (sim > bestScore) {
+                                    bestScore = sim;
+                                    bestMatch = webItem;
+                                }
+                            });
+
+                            let originalName = "(Not Found)";
+                            let localFileStatus = "missing"; 
+                            let fileObj = null;
+
+                            if (bestScore > 30 && bestMatch) {
+                                originalName = bestMatch.file;
+                                if (webAudioFiles[originalName]) {
+                                    localFileStatus = "ready";
+                                    fileObj = webAudioFiles[originalName];
+                                }
+                            }
+
+                            mapped.push({
+                                targetName: targetName,
+                                content: content,
+                                originalName: originalName,
+                                score: bestScore,
+                                localFileStatus: localFileStatus,
+                                fileObj: fileObj
+                            });
+                        }
+                    });
+                    setProgress(Math.round(((i + chunk.length) / total) * 100));
+                    await new Promise(r => setTimeout(r, 0));
+                }
+                setWebParsedList(mapped);
+                setIsProcessing(false);
+                setTimeout(() => setProgress(0), 1000);
+            };
+
+            const downloadWebParsedFiles = async () => {
+                if (!jsZipRef.current || webParsedList.length === 0) return;
+                setIsProcessing(true);
+                const zip = new jsZipRef.current();
+                const folder = zip.folder("Renamed_Audio");
+                
+                let count = 0;
+                
+                for (let i = 0; i < webParsedList.length; i++) {
+                    const item = webParsedList[i];
+                    if (item.localFileStatus === 'ready' && item.fileObj) {
+                        let fileName = item.targetName;
+                        const ext = item.fileObj.name.split('.').pop();
+                        if (!fileName.endsWith(`.${ext}`)) fileName += `.${ext}`;
+                        
+                        folder.file(fileName, item.fileObj);
+                        count++;
+                    }
+                    setProgress(Math.round(((i + 1) / webParsedList.length) * 100));
+                    await new Promise(r => setTimeout(r, 0));
+                }
+
+                if (count === 0) {
+                    alert("沒有可打包的檔案，請確認是否已上傳對應的音檔。");
+                } else {
+                    const content = await zip.generateAsync({ type: "blob" });
+                    const link = document.createElement('a');
+                    link.href = URL.createObjectURL(content);
+                    link.download = "Renamed_Audio.zip";
+                    link.click();
+                }
+                
+                setIsProcessing(false);
+                setTimeout(() => setProgress(0), 1000);
+            };
+
+            const handleRawInputChange = (e) => { const val = e.target.value; setRawPaste(val); const match = val.match(/^([^\s]+)[\s\t]+(.+)$/s); if (match) { setSingleInput({ filename: match[1], content: match[2], secondary: match[2] }); } else if (val.trim()) { setSingleInput(prev => ({ ...prev, content: val, secondary: val })); } };
+            const handleManualInputSubmit = async () => { if (!singleInput.filename || !singleInput.content || !singleFile) { alert("請填寫所有欄位並上傳音檔"); return; } try { setIsProcessing(true); const ctx = await getAudioContext(); const arrayBuffer = await singleFile.arrayBuffer(); const decodedBuffer = await ctx.decodeAudioData(arrayBuffer); setAudioBuffer(decodedBuffer); setCurrentTime(0); setFileName(singleFile.name); setViewMode('splitter'); const rawMarkers = getSegmentsInFile(decodedBuffer.getChannelData(0), decodedBuffer.sampleRate, threshold, minSilenceDuration, minSpeechDuration); let markerStart = 0; let markerEnd = decodedBuffer.duration; if (rawMarkers.length > 0) { markerStart = rawMarkers[0].start; markerEnd = rawMarkers[rawMarkers.length - 1].end; } const newMarker = { id: 1, start: markerStart, end: markerEnd, duration: markerEnd - markerStart, formattedDuration: (markerEnd - markerStart).toFixed(3) + 's', qualityStatus: 'normal', qualityText: 'Manual Input', isDenoised: false, hasIssue: false, issueReason: null, denoiseParams: { highPassFreq: 100, highShelfGain: -10, peakingGain: 3 }, lockedText: { name: singleInput.content, secondary: singleInput.secondary, previewFileName: singleInput.filename } }; setMarkers([newMarker]); setEditMode('manual'); setScriptData([]); setScriptFileName(''); setShowBigWaveform(true); } catch (e) { console.error(e); alert("處理失敗：請確認音檔格式"); } finally { setIsProcessing(false); } };
             const handleStagedFilesUpload = (e) => { const files = Array.from(e.target.files); if (files.length === 0) return; const newStaged = { ...stagedFiles }; files.forEach(f => { newStaged[f.name] = f; }); setStagedFiles(newStaged); e.target.value = null; };
             const removeStagedFile = (filename) => { const newStaged = { ...stagedFiles }; delete newStaged[filename]; setStagedFiles(newStaged); };
-            const handleMergeAndLoad = async () => { if (scriptData.length === 0) { alert("請先載入腳本"); return; } setIsProcessing(true); setErrorMsg(''); try { const ctx = await getAudioContext(); const buffersToConcat = []; const newMarkers = []; let globalOffset = 0; const fileBuffers = {}; const fileSegments = {}; const neededFiles = [...new Set(scriptData.map(r => r.sourceFileName).filter(Boolean))]; for (const filename of neededFiles) { const file = stagedFiles[filename]; if (file) { try { const ab = await file.arrayBuffer(); const decoded = await ctx.decodeAudioData(ab); fileBuffers[filename] = decoded; fileSegments[filename] = getSegmentsInFile(decoded.getChannelData(0), decoded.sampleRate, threshold, minSilenceDuration, minSpeechDuration); } catch (err) { console.warn(`Failed to decode ${filename}`); } } } let lastFileName = null; let currentFileRows = []; const processFileBatch = (filename, rows) => { const buffer = fileBuffers[filename]; if (buffer) { buffersToConcat.push(buffer); const segments = fileSegments[filename] || []; const fileDuration = buffer.duration; rows.forEach((row, i) => { let mStart = 0; let mEnd = 0; let qualityText = 'Auto-Matched'; if (segments.length >= rows.length) { const seg = segments[i]; mStart = seg.start; mEnd = seg.end; } else { const partDuration = fileDuration / rows.length; mStart = i * partDuration; mEnd = (i + 1) * partDuration; qualityText = 'Fallback-Split'; } newMarkers.push({ id: row.id, lockedText: { name: row.primary, secondary: row.secondary, previewFileName: row.targetFileName }, start: globalOffset + mStart, end: globalOffset + mEnd, duration: mEnd - mStart, formattedDuration: (mEnd - mStart).toFixed(3) + 's', qualityStatus: 'normal', qualityText: qualityText, isDenoised: false, denoiseParams: { highPassFreq: 100, highShelfGain: -10, peakingGain: 3 }, hasIssue: false, issueReason: null }); }); globalOffset += fileDuration; } else { rows.forEach(row => { newMarkers.push({ id: row.id, lockedText: { name: row.primary, secondary: row.secondary, previewFileName: row.targetFileName }, start: -1, end: -1, duration: 0, formattedDuration: 'N/A', qualityStatus: 'missing', qualityText: '缺音檔', isDenoised: false, hasIssue: false, issueReason: null }); }); } }; scriptData.forEach((row) => { const fname = row.sourceFileName; if (fname !== lastFileName) { if (lastFileName !== null || currentFileRows.length > 0) { processFileBatch(lastFileName, currentFileRows); } currentFileRows = [row]; lastFileName = fname; } else { currentFileRows.push(row); } }); if (currentFileRows.length > 0) { processFileBatch(lastFileName, currentFileRows); } if (buffersToConcat.length === 0 && newMarkers.every(m => m.qualityStatus === 'missing')) { alert("沒有成功匹配任何音檔，將只顯示文字列表。"); } const mergedBuffer = concatAudioBuffers(buffersToConcat, ctx); setAudioBuffer(mergedBuffer); setMarkers(newMarkers); setFileName(`Merged_Project`); setViewMode('splitter'); setEditMode('manual'); setScriptFlowMode(false); setShowBigWaveform(true); /* AUTO OPEN WAVEFORM FIX */ } catch (e) { console.error(e); setErrorMsg("合併失敗：" + e.message); } finally { setIsProcessing(false); } };
-            const handleSingleFileUpload = async (e) => { const file = e.target.files[0]; if (!file) return; setIsProcessing(true); setFileName(file.name); try { const ctx = await getAudioContext(); const arrayBuffer = await file.arrayBuffer(); const decodedBuffer = await ctx.decodeAudioData(arrayBuffer); setAudioBuffer(decodedBuffer); setCurrentTime(0); setMarkers([]); setEditMode('auto'); setShowBigWaveform(true); /* AUTO OPEN WAVEFORM FIX */ } catch (error) { setErrorMsg("音訊讀取失敗"); } finally { setIsProcessing(false); e.target.value = null; } };
-            const deleteMarker = (idToDelete) => { setEditMode('manual'); setMarkers(prev => prev.filter(m => m.id !== idToDelete)); };
-            const encodeWAV = (samples, numChannels, sampleRate) => { const buffer = new ArrayBuffer(44 + samples.length * 2); const view = new DataView(buffer); const writeString = (view, offset, string) => { for (let i = 0; i < string.length; i++) { view.setUint8(offset + i, string.charCodeAt(i)); } }; writeString(view, 0, 'RIFF'); view.setUint32(4, 36 + samples.length * 2, true); writeString(view, 8, 'WAVE'); writeString(view, 12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, numChannels, true); view.setUint32(24, sampleRate, true); view.setUint32(28, sampleRate * numChannels * 2, true); view.setUint16(32, numChannels * 2, true); view.setUint16(34, 16, true); writeString(view, 36, 'data'); view.setUint32(40, samples.length * 2, true); for (let i = 0; i < samples.length; i++) { let s = Math.max(-1, Math.min(1, samples[i])); s = s < 0 ? s * 0x8000 : s * 0x7FFF; view.setInt16(44 + i * 2, s, true); } return new Blob([view], { type: 'audio/wav' }); };
-            const normalizeAudioData = (channelData, targetDB) => { let sumSquares = 0; for (let i = 0; i < channelData.length; i++) { sumSquares += channelData[i] * channelData[i]; } const rms = Math.sqrt(sumSquares / channelData.length); if (rms < 0.0001) return channelData; const currentDB = 20 * Math.log10(rms); const gainDB = targetDB - currentDB; const gain = Math.pow(10, gainDB / 20); const newData = new Float32Array(channelData.length); for (let i = 0; i < channelData.length; i++) { let val = channelData[i] * gain; if (val > 1.0) val = 1.0; if (val < -1.0) val = -1.0; newData[i] = val; } return newData; };
-            const processAudioSegment = async (rawData, sampleRate, options) => { const offlineCtx = new OfflineAudioContext(1, rawData.length, sampleRate); const source = offlineCtx.createBufferSource(); const buffer = offlineCtx.createBuffer(1, rawData.length, sampleRate); buffer.getChannelData(0).set(rawData); source.buffer = buffer; const highPass = offlineCtx.createBiquadFilter(); highPass.type = 'highpass'; highPass.frequency.value = options.highPassFreq; const deHiss = offlineCtx.createBiquadFilter(); deHiss.type = 'highshelf'; deHiss.frequency.value = options.highShelfGain; const presence = offlineCtx.createBiquadFilter(); presence.type = 'peaking'; presence.frequency.value = 2500; presence.Q.value = 1.0; presence.gain.value = options.peakingGain; source.connect(highPass); highPass.connect(deHiss); deHiss.connect(presence); presence.connect(offlineCtx.destination); source.start(); const rendered = await offlineCtx.startRendering(); return rendered.getChannelData(0); };
-            const getAudioSegmentBlobAsync = async (start, end, denoiseParams) => { if (!audioBuffer) return null; const pad = 0.1; const pStart = Math.max(0, start - pad); const pEnd = Math.min(audioBuffer.duration, end + pad); const sampleRate = audioBuffer.sampleRate; const startSample = Math.floor(pStart * sampleRate); const endSample = Math.floor(pEnd * sampleRate); const length = endSample - startSample; if (length <= 0) return null; const numChannels = audioBuffer.numberOfChannels; let processedChannels = []; for (let c = 0; c < numChannels; c++) { let rawData = audioBuffer.getChannelData(c).slice(startSample, startSample + length); if (denoiseParams) { try { const opts = { highPassFreq: denoiseParams.highPassFreq, highShelfGain: denoiseParams.highShelfGain, peakingGain: denoiseParams.peakingGain }; rawData = await processAudioSegment(rawData, sampleRate, opts); } catch(e) { console.error("Denoise failed", e); } } if (doNormalize) { processedChannels.push(normalizeAudioData(rawData, targetLoudness)); } else { processedChannels.push(rawData); } } let interleaved; if (numChannels === 2) { interleaved = new Float32Array(length * 2); for (let i = 0; i < length; i++) { interleaved[i * 2] = processedChannels[0][i]; interleaved[i * 2 + 1] = processedChannels[1][i]; } } else { interleaved = processedChannels[0]; } return encodeWAV(interleaved, numChannels, sampleRate); };
-
-            const playMarkerByIndex = async (index) => { if (index < 0 || index >= markers.length) return; const marker = markers[index]; if (marker.qualityStatus === 'missing') return; if (marker.isDenoised) { stopPlayback(); const wavBlob = await getAudioSegmentBlobAsync(marker.start, marker.end, marker.denoiseParams); const url = URL.createObjectURL(wavBlob); const audio = new Audio(url); audio.play(); audioSourceRef.current = { stop: () => { audio.pause(); } }; } else { playRange(marker.start, marker.duration); } const resolved = resolveMarkerData(marker, index); setActiveDisplay(resolved); setActiveMarkerIndex(index); };
+            const handleMergeAndLoad = async () => { if (scriptData.length === 0) { alert("請先載入腳本"); return; } setIsProcessing(true); setErrorMsg(''); try { const ctx = await getAudioContext(); const buffersToConcat = []; const newMarkers = []; let globalOffset = 0; const fileBuffers = {}; const fileSegments = {}; const neededFiles = [...new Set(scriptData.map(r => r.sourceFileName).filter(Boolean))]; for (const filename of neededFiles) { const file = stagedFiles[filename]; if (file) { try { const ab = await file.arrayBuffer(); const decoded = await ctx.decodeAudioData(ab); fileBuffers[filename] = decoded; fileSegments[filename] = getSegmentsInFile(decoded.getChannelData(0), decoded.sampleRate, threshold, minSilenceDuration, minSpeechDuration); } catch (err) { console.warn(`Failed to decode ${filename}`); } } } let lastFileName = null; let currentFileRows = []; const processFileBatch = (filename, rows) => { const buffer = fileBuffers[filename]; if (buffer) { buffersToConcat.push(buffer); const segments = fileSegments[filename] || []; const fileDuration = buffer.duration; rows.forEach((row, i) => { let mStart = 0; let mEnd = 0; let qualityText = 'Auto-Matched'; if (segments.length >= rows.length) { const seg = segments[i]; mStart = seg.start; mEnd = seg.end; } else { const partDuration = fileDuration / rows.length; mStart = i * partDuration; mEnd = (i + 1) * partDuration; qualityText = 'Fallback-Split'; } newMarkers.push({ id: row.id, lockedText: { name: row.primary, secondary: row.secondary, previewFileName: row.targetFileName }, start: globalOffset + mStart, end: globalOffset + mEnd, duration: mEnd - mStart, formattedDuration: (mEnd - mStart).toFixed(3) + 's', qualityStatus: 'normal', qualityText: qualityText, isDenoised: false, denoiseParams: { highPassFreq: 100, highShelfGain: -10, peakingGain: 3 }, hasIssue: false, issueReason: null }); }); globalOffset += fileDuration; } else { rows.forEach(row => { newMarkers.push({ id: row.id, lockedText: { name: row.primary, secondary: row.secondary, previewFileName: row.targetFileName }, start: -1, end: -1, duration: 0, formattedDuration: 'N/A', qualityStatus: 'missing', qualityText: '缺音檔', isDenoised: false, hasIssue: false, issueReason: null }); }); } }; scriptData.forEach((row) => { const fname = row.sourceFileName; if (fname !== lastFileName) { if (lastFileName !== null || currentFileRows.length > 0) { processFileBatch(lastFileName, currentFileRows); } currentFileRows = [row]; lastFileName = fname; } else { currentFileRows.push(row); } }); if (currentFileRows.length > 0) { processFileBatch(lastFileName, currentFileRows); } if (buffersToConcat.length === 0 && newMarkers.every(m => m.qualityStatus === 'missing')) { alert("沒有成功匹配任何音檔，將只顯示文字列表。"); } const mergedBuffer = concatAudioBuffers(buffersToConcat, ctx); setAudioBuffer(mergedBuffer); setMarkers(newMarkers); setFileName(`Merged_Project`); setViewMode('splitter'); setEditMode('manual'); setScriptFlowMode(false); setShowBigWaveform(true); } catch (e) { console.error(e); setErrorMsg("合併失敗：" + e.message); } finally { setIsProcessing(false); } };
+            const handleSingleFileUpload = async (e) => { const file = e.target.files[0]; if (!file) return; setIsProcessing(true); setFileName(file.name); try { const ctx = await getAudioContext(); const arrayBuffer = await file.arrayBuffer(); const decodedBuffer = await ctx.decodeAudioData(arrayBuffer); setAudioBuffer(decodedBuffer); setCurrentTime(0); setMarkers([]); setEditMode('auto'); setShowBigWaveform(true); } catch (error) { setErrorMsg("音訊讀取失敗"); } finally { setIsProcessing(false); e.target.value = null; } };
+            const handleScriptUpload = async (e) => { const file = e.target.files[0]; if (!file) return; try { const buffer = await file.arrayBuffer(); const decoder = new TextDecoder(csvEncoding); const text = decoder.decode(buffer); const rows = parseCSV(text); if (rows.length < 2) { alert("CSV 格式錯誤或無內容"); return; } const headers = rows[0].map(h => h.trim().toLowerCase()); let sourceFileIdx = headers.indexOf('filename'); let targetFileIdx = headers.indexOf('new_filename'); if (sourceFileIdx === -1) sourceFileIdx = headers.findIndex(h => h.includes('file')); const contentIdx = 0; const data = rows.slice(1).map((row, i) => { const primary = row[contentIdx] || ""; let sourceFileName = ""; if (sourceFileIdx !== -1 && row[sourceFileIdx]) sourceFileName = row[sourceFileIdx].trim(); let targetFileName = ""; if (targetFileIdx !== -1 && row[targetFileIdx]) targetFileName = row[targetFileIdx].trim(); if (!targetFileName && primary) targetFileName = `${(i+1).toString().padStart(3, '0')}_${primary.replace(/[\\/:*?"<>|]/g, '')}`; let secondary = ""; if (targetFileIdx !== -1 && targetFileIdx + 1 < row.length && row[targetFileIdx + 1]) { secondary = row[targetFileIdx + 1].trim(); } if (!secondary) { for (let k = row.length - 1; k >= 0; k--) { const cell = row[k] ? row[k].trim() : ""; if (cell && k !== contentIdx && k !== sourceFileIdx && k !== targetFileIdx) { secondary = cell; break; } } } return { id: i + 1, primary, secondary, sourceFileName, targetFileName, raw: row }; }).filter(item => item.primary || item.secondary); const uniqueNames = [...new Set(data.map(d => d.sourceFileName).filter(Boolean))]; setUniqueFileNames(uniqueNames); setScriptData(data); setScriptFileName(file.name); } catch (err) { console.error(err); alert("讀取 CSV 失敗，請檢查編碼設定。"); } e.target.value = null; };
+            const handleAnalyzerUpload = async (e) => { const fileList = e.target.files; if (!fileList || fileList.length === 0) return; const files = Array.from(fileList); setIsAnalyzing(true); e.target.value = null; await new Promise(r => setTimeout(r, 50)); const newResults = []; try { const ctx = await getAudioContext(); for (let i = 0; i < files.length; i++) { const file = files[i]; try { const arrayBuffer = await file.arrayBuffer(); const audioBuffer = await ctx.decodeAudioData(arrayBuffer); let maxPeak = 0; let totalSumSquares = 0; let totalLength = 0; for (let c = 0; c < audioBuffer.numberOfChannels; c++) { const data = audioBuffer.getChannelData(c); for (let j = 0; j < data.length; j++) { const abs = Math.abs(data[j]); if (abs > maxPeak) maxPeak = abs; totalSumSquares += data[j] * data[j]; } totalLength += data.length; } const rms = Math.sqrt(totalSumSquares / totalLength); const peakDb = 20 * Math.log10(maxPeak); const rmsDb = 20 * Math.log10(rms); newResults.push({ id: Date.now() + Math.random(), filename: file.name, duration: audioBuffer.duration, channels: audioBuffer.numberOfChannels, sampleRate: audioBuffer.sampleRate, peakDb: peakDb.toFixed(2), rmsDb: rmsDb.toFixed(2), peakLinear: maxPeak, rmsLinear: rms, status: 'success' }); } catch (err) { console.error(`Error analyzing ${file.name}:`, err); newResults.push({ id: Date.now() + Math.random(), filename: file.name, status: 'error', errorMsg: '解碼失敗 (可能格式不支援)' }); } } setAnalyzerResults(prev => [...prev, ...newResults]); } catch (e) { console.error("Batch analysis fatal error:", e); alert("批次分析發生錯誤: " + e.message); } finally { setIsAnalyzing(false); } };
+            const clearAnalyzerResults = () => { setAnalyzerResults([]); };
+            const exportAnalyzerReport = () => { if (analyzerResults.length === 0) return; let content = "Filename,Duration (s),SampleRate (Hz),Channels,Peak (dB),RMS (dB),Status\n"; analyzerResults.forEach(r => { if (r.status === 'success') { content += `${r.filename},${r.duration.toFixed(2)},${r.sampleRate},${r.channels},${r.peakDb},${r.rmsDb},OK\n`; } else { content += `${r.filename},,,,,,Error\n`; } }); const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' }); const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = `Audio_Analysis_Report_${new Date().toISOString().slice(0,10)}.csv`; link.click(); };
             const stopPlayback = () => { if (audioSourceRef.current) { audioSourceRef.current.stop(); audioSourceRef.current = null; } cancelAnimationFrame(animationRef.current); setIsPlaying(false); };
             const togglePlay = async () => { if (!audioBuffer) return; const ctx = await getAudioContext(); if (isPlaying) { stopPlayback(); } else { const source = ctx.createBufferSource(); source.buffer = audioBuffer; source.connect(ctx.destination); let startOffset = currentTime >= audioBuffer.duration ? 0 : currentTime; if (startOffset === 0) setCurrentTime(0); source.start(0, startOffset); startTimeRef.current = ctx.currentTime - startOffset; audioSourceRef.current = source; setIsPlaying(true); const drawLoop = () => { const now = ctx.currentTime - startTimeRef.current; if (now >= audioBuffer.duration) { setIsPlaying(false); setCurrentTime(0); return; } setCurrentTime(now); animationRef.current = requestAnimationFrame(drawLoop); }; drawLoop(); } };
             const playRange = async (start, duration) => { if (!audioBuffer) return; const ctx = await getAudioContext(); if (isPlaying) { audioSourceRef.current?.stop(); cancelAnimationFrame(animationRef.current); } const source = ctx.createBufferSource(); source.buffer = audioBuffer; source.connect(ctx.destination); source.start(0, start, duration); setCurrentTime(start); setIsPlaying(true); startTimeRef.current = ctx.currentTime - start; if (containerRef.current && canvasRef.current) { const width = canvasRef.current.width; const scrollPos = (start / audioBuffer.duration) * width - (containerRef.current.clientWidth / 2); containerRef.current.scrollTo({ left: scrollPos, behavior: 'smooth' }); } setTimeout(() => { setIsPlaying(false); }, duration * 1000); audioSourceRef.current = source; const drawLoop = () => { const now = ctx.currentTime - startTimeRef.current; if (now >= start + duration) return; setCurrentTime(now); animationRef.current = requestAnimationFrame(drawLoop); }; drawLoop(); };
             const playBatchFile = (sourceFileName) => { const file = stagedFiles[sourceFileName]; if (!file) return; if (batchPlayingId === sourceFileName && !batchAudioRef.current.paused) { batchAudioRef.current.pause(); setIsPlaying(false); return; } const url = URL.createObjectURL(file); batchAudioRef.current.src = url; batchAudioRef.current.play(); setBatchPlayingId(sourceFileName); setIsPlaying(true); batchAudioRef.current.onended = () => { setBatchPlayingId(null); setIsPlaying(false); }; batchAudioRef.current.onpause = () => setIsPlaying(false); batchAudioRef.current.onplay = () => setIsPlaying(true); };
             const playPreviousSegment = () => { if (markers.length === 0) return; let newIndex = activeMarkerIndex !== null ? activeMarkerIndex - 1 : 0; while (newIndex >= 0 && markers[newIndex].qualityStatus === 'missing') { newIndex--; } if (newIndex >= 0) { playMarkerByIndex(newIndex); } };
             const playNextSegment = () => { if (markers.length === 0) return; let newIndex = activeMarkerIndex !== null ? activeMarkerIndex + 1 : 0; while (newIndex < markers.length && markers[newIndex].qualityStatus === 'missing') { newIndex++; } if (newIndex < markers.length) { playMarkerByIndex(newIndex); } };
-            const resolveMarkerData = (marker, index) => { if (marker.lockedText) return marker.lockedText; if (scriptData.length > 0 && scriptData[index]) { const row = scriptData[index]; return { name: row.primary, secondary: row.secondary, previewFileName: row.targetFileName }; } const fallbackName = speakerMode ? (index % 2 === 0 ? "Speaker A" : "Speaker B") : `Marker ${index + 1}`; return { name: marker.name || fallbackName, secondary: marker.secondary || "", previewFileName: marker.previewFileName || `${(index+1).toString().padStart(2, '0')}_${fallbackName.replace(/\s+/g, '_')}` }; };
-            
-            const downloadSegment = async (marker, index) => { if (marker.qualityStatus === 'missing') return; const resolved = resolveMarkerData(marker, index); const wavBlob = await getAudioSegmentBlobAsync(marker.start, marker.end, marker.isDenoised ? marker.denoiseParams : null); if (!wavBlob) return; const url = URL.createObjectURL(wavBlob); const link = document.createElement('a'); link.href = url; let downloadName = resolved.previewFileName; if (!downloadName.toLowerCase().endsWith('.wav')) downloadName += '.wav'; link.setAttribute('download', downloadName); document.body.appendChild(link); link.click(); document.body.removeChild(link); };
-            const downloadAllZip = async () => { if (!jsZipRef.current || markers.length === 0) return; setIsZipping(true); const zip = new jsZipRef.current(); const folderName = fileName.split('.')[0] + "_sliced"; const folder = zip.folder(folderName); let count = 0; for (let i = 0; i < markers.length; i++) { const marker = markers[i]; if (marker.qualityStatus === 'missing') continue; const resolved = resolveMarkerData(marker, i); const blob = await getAudioSegmentBlobAsync(marker.start, marker.end, marker.isDenoised ? marker.denoiseParams : null); if (blob) { let name = resolved.previewFileName; if (!name.toLowerCase().endsWith('.wav')) name += '.wav'; folder.file(name, blob); count++; } } if (count === 0) { alert("沒有可下載的音檔"); setIsZipping(false); return; } try { const content = await zip.generateAsync({ type: "blob" }); const url = URL.createObjectURL(content); const link = document.createElement('a'); link.href = url; link.setAttribute('download', `${folderName}.zip`); document.body.appendChild(link); link.click(); document.body.removeChild(link); } catch (err) { alert("打包失敗"); } finally { setIsZipping(false); } };
-            const downloadIssueReport = () => { const issues = markers.filter(m => m.hasIssue); if (issues.length === 0) { alert("目前沒有標記任何問題段落。"); return; } let content = `問題報告 - ${fileName}\n產生時間: ${new Date().toLocaleString()}\n\n`; issues.forEach((m) => { const index = markers.findIndex(mk => mk.id === m.id); const res = resolveMarkerData(m, index); content += `[ID: ${m.id}] ${res.name}\n`; if (m.issueReason) content += `問題類型: ${m.issueReason}\n`; content += `時間: ${m.formattedStart} - ${m.formattedDuration}\n`; content += `檔名: ${res.previewFileName}\n`; if (res.secondary) content += `族語: ${res.secondary}\n`; content += `----------------------------------------\n`; }); const blob = new Blob([content], { type: 'text/plain;charset=utf-8' }); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.setAttribute('download', `${fileName.split('.')[0]}_issues.txt`); document.body.appendChild(link); link.click(); document.body.removeChild(link); };
-            const getSegmentsInFile = (channelData, sampleRate, thresholdDB, minSilenceSec, minSpeechSec) => { const bufferLength = channelData.length; const thresholdLinear = Math.pow(10, thresholdDB / 20); const minSilenceSamples = minSilenceSec * sampleRate; const minSpeechSamples = minSpeechSec * sampleRate; const paddingSamples = 0.1 * sampleRate; let isSpeaking = false; let speechStart = 0; let segments = []; let silenceCount = 0; const step = 100; for (let i = 0; i < bufferLength; i += step) { const amplitude = Math.abs(channelData[i]); if (amplitude > thresholdLinear) { if (!isSpeaking) { isSpeaking = true; speechStart = i; } silenceCount = 0; } else { if (isSpeaking) { silenceCount += step; if (silenceCount > minSilenceSamples) { const speechEnd = i - silenceCount; if (speechEnd - speechStart > minSpeechSamples) { let start = Math.max(0, speechStart - paddingSamples); let end = Math.min(bufferLength, speechEnd + paddingSamples); segments.push({ start: start / sampleRate, end: end / sampleRate }); } isSpeaking = false; } } } } if (isSpeaking) { let start = Math.max(0, speechStart - paddingSamples); let end = bufferLength; segments.push({ start: start / sampleRate, end: end / sampleRate }); } return segments; };
-            const calculateSimilarity = (recText, scriptText) => { if (!recText || !scriptText) return 0; const s1 = recText.toLowerCase().replace(/[^a-z0-9]/g, ''); const s2 = scriptText.toLowerCase().replace(/[^a-z0-9]/g, ''); if (s1.length === 0 && s2.length === 0) return 100; if (s1.length === 0 || s2.length === 0) return 0; const track = Array(s2.length + 1).fill(null).map(() => Array(s1.length + 1).fill(null)); for (let i = 0; i <= s1.length; i += 1) track[0][i] = i; for (let j = 0; j <= s2.length; j += 1) track[j][0] = j; for (let j = 1; j <= s2.length; j += 1) { for (let i = 1; i <= s1.length; i += 1) { const indicator = s1[i - 1] === s2[j - 1] ? 0 : 1; track[j][i] = Math.min(track[j][i - 1] + 1, track[j - 1][i] + 1, track[j - 1][i - 1] + indicator); } } const maxLength = Math.max(s1.length, s2.length); return Math.round((1 - track[s2.length][s1.length] / maxLength) * 100); };
-            
-            // --- Helper Handlers for Batch QC ---
-            const handleBatchQcTextChange = (e) => { setBatchQcTextRaw(e.target.value); };
-            const handleBatchQcFilesUpload = (e) => { const files = Array.from(e.target.files); if (files.length === 0) return; const newMap = { ...qcAudioFiles }; files.forEach(f => newMap[f.name] = f); setQcAudioFiles(newMap); e.target.value = null; };
-            const processBatchQcList = async () => { if (!batchQcTextRaw.trim()) { alert("請先貼上資料"); return; } setIsProcessing(true); try { const ctx = await getAudioContext(); const lines = batchQcTextRaw.split('\n').filter(l => l.trim()); const newList = []; const sortedFilenames = Object.keys(qcAudioFiles).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })); for (let i = 0; i < lines.length; i++) { const line = lines[i]; const match = line.match(/^([^\s]+)[\s\t]+(.+)$/s); let targetName = ""; let content = ""; if (match) { targetName = match[1]; content = match[2]; } else { targetName = `track_${i+1}`; content = line; } let matchedFile = null; let buffer = null; let status = 'missing'; if (i < sortedFilenames.length) { const srcName = sortedFilenames[i]; matchedFile = qcAudioFiles[srcName]; try { const ab = await matchedFile.arrayBuffer(); buffer = await ctx.decodeAudioData(ab); status = 'ready'; } catch (e) { console.error("Decode fail", srcName); status = 'error'; } } newList.push({ id: i + 1, originalName: matchedFile ? matchedFile.name : "(無)", targetName: targetName, content: content, audioBuffer: buffer, status: status, isDenoised: false, denoiseParams: { highPassFreq: 100, highShelfGain: -10, peakingGain: 3 }, hasIssue: false, issueReason: null }); } setQcList(newList); } catch (e) { console.error(e); alert("處理發生錯誤"); } finally { setIsProcessing(false); } };
-            const toggleQcDenoise = (id) => { setQcList(prev => prev.map(item => item.id === id ? { ...item, isDenoised: !item.isDenoised } : item)); };
-            const setQcIssue = (id, reason) => { setQcList(prev => prev.map(item => item.id === id ? { ...item, hasIssue: true, issueReason: reason } : item)); setFlagMenuId(null); };
-            const clearQcIssue = (id) => { setQcList(prev => prev.map(item => item.id === id ? { ...item, hasIssue: false, issueReason: null } : item)); setFlagMenuId(null); };
-            const playQcItem = async (item) => { if (!item.audioBuffer) return; if (batchAudioRef.current) { batchAudioRef.current.pause(); batchAudioRef.current = new Audio(); } if (currentlyPlayingQcId === item.id) { setCurrentlyPlayingQcId(null); return; } let wavBlob; if (item.isDenoised) { wavBlob = await processBufferToBlob(item.audioBuffer, item.denoiseParams); } else { wavBlob = await processBufferToBlob(item.audioBuffer, null); } const url = URL.createObjectURL(wavBlob); batchAudioRef.current.src = url; batchAudioRef.current.play(); setCurrentlyPlayingQcId(item.id); batchAudioRef.current.onended = () => setCurrentlyPlayingQcId(null); };
-            const processBufferToBlob = async (buffer, denoiseParams) => { const sampleRate = buffer.sampleRate; const numChannels = buffer.numberOfChannels; let processedChannels = []; for (let c = 0; c < numChannels; c++) { let rawData = buffer.getChannelData(c); if (denoiseParams) { const opts = { highPassFreq: denoiseParams.highPassFreq, highShelfGain: denoiseParams.highShelfGain, peakingGain: denoiseParams.peakingGain }; rawData = await processAudioSegment(rawData, sampleRate, opts); } if (doNormalize) { processedChannels.push(normalizeAudioData(rawData, targetLoudness)); } else { processedChannels.push(rawData); } } let interleaved; if (numChannels === 2) { interleaved = new Float32Array(buffer.length * 2); for (let i = 0; i < buffer.length; i++) { interleaved[i * 2] = processedChannels[0][i]; interleaved[i * 2 + 1] = processedChannels[1][i]; } } else { interleaved = processedChannels[0]; } return encodeWAV(interleaved, numChannels, sampleRate); };
-            const downloadQcZip = async () => { if (!jsZipRef.current || qcList.length === 0) return; setIsZipping(true); const zip = new jsZipRef.current(); const folder = zip.folder("Batch_Processed"); let count = 0; for (const item of qcList) { if (item.status === 'missing' || !item.audioBuffer) continue; const blob = await processBufferToBlob(item.audioBuffer, item.isDenoised ? item.denoiseParams : null); let name = item.targetName; if (!name.toLowerCase().endsWith('.wav')) name += '.wav'; folder.file(name, blob); count++; } if (count === 0) { alert("沒有可處理的檔案"); setIsZipping(false); return; } const content = await zip.generateAsync({ type: "blob" }); const link = document.createElement('a'); link.href = URL.createObjectURL(content); link.download = "Batch_Output.zip"; link.click(); setIsZipping(false); };
-            const downloadQcReport = () => { let content = `驗收報表 (QC Report)\n日期: ${new Date().toLocaleString()}\n\n`; content += `ID, 原始檔名, 目標檔名, 狀態, 問題標記, 內容\n`; qcList.forEach(item => { const status = item.status === 'ready' ? 'OK' : 'Missing'; const issue = item.hasIssue ? item.issueReason : 'None'; content += `${item.id}, ${item.originalName}, ${item.targetName}, ${status}, ${issue}, ${item.content}\n`; }); const blob = new Blob([content], { type: 'text/csv;charset=utf-8' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = "QC_Report.csv"; link.click(); };
-            const handleRawInputChange = (e) => { const val = e.target.value; setRawPaste(val); const match = val.match(/^([^\s]+)[\s\t]+(.+)$/s); if (match) { setSingleInput({ filename: match[1], content: match[2], secondary: match[2] }); } else if (val.trim()) { setSingleInput(prev => ({ ...prev, content: val, secondary: val })); } };
-            const handleManualInputSubmit = async () => { if (!singleInput.filename || !singleInput.content || !singleFile) { alert("請填寫所有欄位並上傳音檔"); return; } try { setIsProcessing(true); const ctx = await getAudioContext(); const arrayBuffer = await singleFile.arrayBuffer(); const decodedBuffer = await ctx.decodeAudioData(arrayBuffer); setAudioBuffer(decodedBuffer); setCurrentTime(0); setFileName(singleFile.name); setViewMode('splitter'); const rawMarkers = getSegmentsInFile(decodedBuffer.getChannelData(0), decodedBuffer.sampleRate, threshold, minSilenceDuration, minSpeechDuration); let markerStart = 0; let markerEnd = decodedBuffer.duration; if (rawMarkers.length > 0) { markerStart = rawMarkers[0].start; markerEnd = rawMarkers[rawMarkers.length - 1].end; } const newMarker = { id: 1, start: markerStart, end: markerEnd, duration: markerEnd - markerStart, formattedDuration: (markerEnd - markerStart).toFixed(3) + 's', qualityStatus: 'normal', qualityText: 'Manual Input', isDenoised: false, hasIssue: false, issueReason: null, denoiseParams: { highPassFreq: 100, highShelfGain: -10, peakingGain: 3 }, lockedText: { name: singleInput.content, secondary: singleInput.secondary, previewFileName: singleInput.filename } }; setMarkers([newMarker]); setEditMode('manual'); setScriptData([]); setScriptFileName(''); setShowBigWaveform(true); /* AUTO OPEN WAVEFORM */ } catch (e) { console.error(e); alert("處理失敗：請確認音檔格式"); } finally { setIsProcessing(false); } };
-            const exportCSV = () => { if (markers.length === 0) return; let content = "Name\tStart\tDuration\tTime Format\tType\tDescription\r\n"; markers.forEach((marker, index) => { if (marker.qualityStatus === 'missing') return; const resolved = resolveMarkerData(marker, index); const start = marker.start.toFixed(3); const duration = exportAsRange ? marker.duration.toFixed(3) : "0.000"; const safeName = resolved.name.replace(/\t/g, " "); const desc = resolved.secondary ? resolved.secondary.replace(/\t/g, " ") : resolved.previewFileName; content += `${safeName}\t${start}\t${duration}\tdecimal\tCue\t${desc}\r\n`; }); const blob = new Blob(["\uFEFF" + content], { type: 'text/csv;charset=utf-8;' }); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.setAttribute('download', `${fileName.split('.')[0]}_markers.csv`); document.body.appendChild(link); link.click(); document.body.removeChild(link); };
-            const detectMarkers = useMemo(() => { if (!audioBuffer) return []; const rawData = audioBuffer.getChannelData(0); const sampleRate = audioBuffer.sampleRate; const bufferLength = rawData.length; const thresholdLinear = Math.pow(10, threshold / 20); const minSilenceSamples = minSilenceDuration * sampleRate; const minSpeechSamples = minSpeechDuration * sampleRate; const paddingSamples = padding * sampleRate; let isSpeaking = false; let speechStart = 0; let tempMarkers = []; let silenceCount = 0; const step = 100; for (let i = 0; i < bufferLength; i += step) { const amplitude = Math.abs(rawData[i]); if (amplitude > thresholdLinear) { if (!isSpeaking) { isSpeaking = true; speechStart = i; } silenceCount = 0; } else { if (isSpeaking) { silenceCount += step; if (silenceCount > minSilenceSamples) { const speechEnd = i - silenceCount; if (speechEnd - speechStart > minSpeechSamples) { let startSample = Math.max(0, speechStart - paddingSamples); let endSample = Math.min(bufferLength, speechEnd + paddingSamples); tempMarkers.push({ rawStart: startSample / sampleRate, rawDuration: (endSample - startSample) / sampleRate, rawEnd: endSample / sampleRate }); } isSpeaking = false; } } } } return tempMarkers.map((m, index) => ({ id: index + 1, start: m.rawStart, end: m.rawEnd, duration: m.rawDuration, formattedStart: formatTime(m.rawStart), formattedDuration: m.rawDuration.toFixed(3) + 's', qualityStatus: 'normal', qualityText: 'Auto', isDenoised: false, denoiseParams: { highPassFreq: 100, highShelfGain: -10, peakingGain: 3 }, hasIssue: false, issueReason: null })); }, [audioBuffer, threshold, minSilenceDuration, minSpeechDuration, padding, speakerMode, scriptData]);
-            useEffect(() => { if (viewMode === 'splitter' && editMode === 'auto' && detectMarkers.length > 0) { setMarkers(detectMarkers); } }, [detectMarkers, viewMode, editMode]);
-            const handleSliderChange = (setter) => (e) => { setEditMode('auto'); setter(Number(e.target.value)); };
-            function formatTime(seconds) { if (seconds < 0) return "--:--:--"; const h = Math.floor(seconds / 3600); const m = Math.floor((seconds % 3600) / 60); const s = Math.floor(seconds % 60); const ms = Math.floor((seconds % 1) * 1000); return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')}`; }
+
             const getCanvasX = (e) => { if (!canvasRef.current) return 0; const rect = canvasRef.current.getBoundingClientRect(); const scaleX = canvasRef.current.width / rect.width; return (e.clientX - rect.left) * scaleX; };
             const handleCanvasMouseMove = (e) => { if (!audioBuffer) return; const x = getCanvasX(e); const width = canvasRef.current.width; const time = (x / width) * audioBuffer.duration; if (dragTarget) { if (dragTarget.type === 'body') { const dx = Math.abs(x - clickStartPosRef.current); if (dx > 5) dragMovedRef.current = true; } if (dragTarget.type === 'minimap') { const minimapWidth = minimapRef.current.width; const ratio = x / minimapWidth; const newScroll = ratio * containerRef.current.scrollWidth - containerRef.current.clientWidth / 2; containerRef.current.scrollLeft = newScroll; return; } if (dragTarget.type === 'create') { } if (dragTarget.type === 'body' && !dragMovedRef.current) return; const { id, type, offset } = dragTarget; setMarkers(prev => prev.map(m => { if (m.id !== id) return m; let newStart = m.start; let newEnd = m.end; const duration = m.end - m.start; if (type === 'start') { newStart = Math.max(0, Math.min(time, m.end - 0.1)); newEnd = m.end; } else { newEnd = Math.min(audioBuffer.duration, Math.max(time, m.start + 0.1)); newStart = m.start; } if (type === 'body') { newStart = time - offset; if (newStart < 0) newStart = 0; if (newStart + duration > audioBuffer.duration) newStart = audioBuffer.duration - duration; newEnd = newStart + duration; } const newDuration = newEnd - newStart; return { ...m, start: newStart, end: newEnd, duration: newDuration, formattedStart: formatTime(newStart), formattedDuration: newDuration.toFixed(3) + 's', }; })); return; } const hoverThresholdPx = 12 * (canvasRef.current.width / canvasRef.current.getBoundingClientRect().width); let target = null; let foundEdge = false; for (const m of markers) { if (m.qualityStatus === 'missing') continue; const startX = (m.start / audioBuffer.duration) * width; const endX = (m.end / audioBuffer.duration) * width; if (Math.abs(x - startX) < hoverThresholdPx) { target = { id: m.id, type: 'start' }; foundEdge = true; break; } if (Math.abs(x - endX) < hoverThresholdPx) { target = { id: m.id, type: 'end' }; foundEdge = true; break; } } if (!foundEdge) { for (const m of markers) { if (m.qualityStatus === 'missing') continue; const startX = (m.start / audioBuffer.duration) * width; const endX = (m.end / audioBuffer.duration) * width; if (x > startX && x < endX) { target = { id: m.id, type: 'body' }; break; } } } setHoverTarget(target); };
             const handleCanvasMouseDown = (e) => { if (!audioBuffer) return; const x = getCanvasX(e); const width = canvasRef.current.width; const time = (x / width) * audioBuffer.duration; if (hoverTarget) { let offset = 0; if (hoverTarget.type === 'body') { const marker = markers.find(m => m.id === hoverTarget.id); if (marker) offset = time - marker.start; } clickStartPosRef.current = x; dragMovedRef.current = false; setEditMode('manual'); setDragTarget({ ...hoverTarget, offset }); setIsPlaying(false); } else { setEditMode('manual'); setDragTarget({ type: 'create', startX: x, startTime: time }); setCurrentTime(time); } };
@@ -554,108 +838,6 @@
             const handleMinimapMouseDown = (e) => { if (!audioBuffer || !minimapRef.current) return; const rect = minimapRef.current.getBoundingClientRect(); const x = e.clientX - rect.left; const width = minimapRef.current.width; const ratio = x / width; if (containerRef.current) { const scrollWidth = containerRef.current.scrollWidth; const clientWidth = containerRef.current.clientWidth; const newScroll = ratio * scrollWidth - clientWidth / 2; containerRef.current.scrollLeft = newScroll; return; } setDragTarget({ type: 'minimap' }); };
             const handleMinimapMouseMove = (e) => { if (dragTarget?.type === 'minimap') { handleMinimapMouseDown(e); } };
             const handleContainerScroll = () => { if (containerRef.current) { setScrollLeft(containerRef.current.scrollLeft); } };
-
-            // Analyzer Logic (Updated for Batch)
-            const handleAnalyzerUpload = async (e) => {
-                const fileList = e.target.files;
-                if (!fileList || fileList.length === 0) return;
-                
-                // Convert FileList to Array immediately to avoid issues during async ops
-                const files = Array.from(fileList);
-                
-                setIsAnalyzing(true);
-                // Clear input value to allow re-uploading same files
-                e.target.value = null;
-
-                // Force a small delay to let React render the loading state
-                await new Promise(r => setTimeout(r, 50));
-
-                const newResults = [];
-                try {
-                    const ctx = await getAudioContext();
-                    
-                    for (let i = 0; i < files.length; i++) {
-                        const file = files[i];
-                        try {
-                            const arrayBuffer = await file.arrayBuffer();
-                            const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
-
-                            let maxPeak = 0;
-                            let totalSumSquares = 0;
-                            let totalLength = 0;
-
-                            for (let c = 0; c < audioBuffer.numberOfChannels; c++) {
-                                const data = audioBuffer.getChannelData(c);
-                                for (let j = 0; j < data.length; j++) {
-                                    const abs = Math.abs(data[j]);
-                                    if (abs > maxPeak) maxPeak = abs;
-                                    totalSumSquares += data[j] * data[j];
-                                }
-                                totalLength += data.length;
-                            }
-
-                            const rms = Math.sqrt(totalSumSquares / totalLength);
-                            const peakDb = 20 * Math.log10(maxPeak);
-                            const rmsDb = 20 * Math.log10(rms);
-
-                            newResults.push({
-                                id: Date.now() + Math.random(),
-                                filename: file.name,
-                                duration: audioBuffer.duration,
-                                channels: audioBuffer.numberOfChannels,
-                                sampleRate: audioBuffer.sampleRate,
-                                peakDb: peakDb.toFixed(2),
-                                rmsDb: rmsDb.toFixed(2),
-                                peakLinear: maxPeak,
-                                rmsLinear: rms,
-                                status: 'success'
-                            });
-                        } catch (err) {
-                            console.error(`Error analyzing ${file.name}:`, err);
-                            newResults.push({
-                                id: Date.now() + Math.random(),
-                                filename: file.name,
-                                status: 'error',
-                                errorMsg: '解碼失敗 (可能格式不支援)'
-                            });
-                        }
-                    }
-                    
-                    setAnalyzerResults(prev => [...prev, ...newResults]);
-                } catch (e) {
-                    console.error("Batch analysis fatal error:", e);
-                    alert("批次分析發生錯誤: " + e.message);
-                } finally {
-                    setIsAnalyzing(false);
-                }
-            };
-            
-            const clearAnalyzerResults = () => {
-                setAnalyzerResults([]);
-            };
-            
-            const exportAnalyzerReport = () => {
-                if (analyzerResults.length === 0) return;
-                let content = "Filename,Duration (s),SampleRate (Hz),Channels,Peak (dB),RMS (dB),Status\n";
-                analyzerResults.forEach(r => {
-                    if (r.status === 'success') {
-                         content += `${r.filename},${r.duration.toFixed(2)},${r.sampleRate},${r.channels},${r.peakDb},${r.rmsDb},OK\n`;
-                    } else {
-                         content += `${r.filename},,,,,,Error\n`;
-                    }
-                });
-                const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
-                const link = document.createElement("a");
-                link.href = URL.createObjectURL(blob);
-                link.download = `Audio_Analysis_Report_${new Date().toISOString().slice(0,10)}.csv`;
-                link.click();
-            };
-
-            // Main Waveform Draw Logic
-            useEffect(() => { if (!audioBuffer || !canvasRef.current) return; const canvas = canvasRef.current; const ctx = canvas.getContext('2d'); const baseWidth = containerRef.current ? containerRef.current.clientWidth : 800; const width = Math.floor(baseWidth * zoomLevel); const height = canvas.height; if (canvas.width !== width) canvas.width = width; ctx.clearRect(0, 0, width, height); ctx.fillStyle = '#1e293b'; ctx.fillRect(0, 0, width, height); const data = audioBuffer.getChannelData(0); const step = Math.ceil(data.length / width); const amp = height / 2; ctx.beginPath(); ctx.strokeStyle = '#60a5fa'; ctx.lineWidth = 1; for (let i = 0; i < width; i++) { let min = 1.0; let max = -1.0; const startIdx = Math.floor(i * step); for (let j = 0; j < step; j++) { const idx = startIdx + j; if (idx < data.length) { const datum = data[idx] * ampScale; if (datum < min) min = datum; if (datum > max) max = datum; } } if (min < -1) min = -1; if (max > 1) max = 1; if (min === 1.0 && max === -1.0) { min = 0; max = 0; } ctx.moveTo(i, (1 + min) * amp); ctx.lineTo(i, (1 + max) * amp); } ctx.stroke(); const thresholdLinear = Math.pow(10, threshold / 20) * ampScale; let visualThresh = Math.min(thresholdLinear, 1); const thresholdYTop = (1 - visualThresh) * amp; const thresholdYBot = (1 + visualThresh) * amp; ctx.beginPath(); ctx.strokeStyle = '#fbbf24'; ctx.setLineDash([5, 5]); ctx.moveTo(0, thresholdYTop); ctx.lineTo(width, thresholdYTop); ctx.moveTo(0, thresholdYBot); ctx.lineTo(width, thresholdYBot); ctx.stroke(); ctx.setLineDash([]); markers.forEach(marker => { if (marker.qualityStatus === 'missing') return; const startX = (marker.start / audioBuffer.duration) * width; const endX = (marker.end / audioBuffer.duration) * width; if (hoverTarget?.id === marker.id && hoverTarget?.type === 'body') { ctx.fillStyle = 'rgba(239, 68, 68, 0.4)'; } else { ctx.fillStyle = 'rgba(239, 68, 68, 0.2)'; } ctx.fillRect(startX, 0, endX - startX, height); ctx.lineWidth = 4; ctx.beginPath(); const isHoverStart = hoverTarget?.id === marker.id && hoverTarget?.type === 'start'; ctx.strokeStyle = isHoverStart ? '#ffffff' : 'rgba(239, 68, 68, 0.8)'; ctx.moveTo(startX, 0); ctx.lineTo(startX, height); ctx.stroke(); ctx.beginPath(); const isHoverEnd = hoverTarget?.id === marker.id && hoverTarget?.type === 'end'; ctx.strokeStyle = isHoverEnd ? '#ffffff' : 'rgba(239, 68, 68, 0.8)'; ctx.moveTo(endX, 0); ctx.lineTo(endX, height); ctx.stroke(); ctx.fillStyle = '#ef4444'; ctx.font = '12px sans-serif'; ctx.fillText(marker.id, startX + 5, 15); }); const playheadX = (currentTime / audioBuffer.duration) * width; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(playheadX, 0); ctx.lineTo(playheadX, height); ctx.stroke(); if (canvas) { if (dragTarget) { if (dragTarget.type === 'body') canvas.style.cursor = 'grabbing'; else if (dragTarget.type === 'create') canvas.style.cursor = 'crosshair'; else canvas.style.cursor = 'col-resize'; } else if (hoverTarget) { if (hoverTarget.type === 'body') canvas.style.cursor = 'grab'; else canvas.style.cursor = 'col-resize'; } else { canvas.style.cursor = 'default'; } } }, [audioBuffer, markers, threshold, currentTime, zoomLevel, ampScale, hoverTarget, dragTarget]);
-
-            // Minimap Draw Logic
-            useEffect(() => { if (!audioBuffer || !minimapRef.current || !containerRef.current) return; const canvas = minimapRef.current; const ctx = canvas.getContext('2d'); const width = canvas.width; const height = canvas.height; ctx.clearRect(0, 0, width, height); ctx.fillStyle = '#0f172a'; ctx.fillRect(0, 0, width, height); const data = audioBuffer.getChannelData(0); const step = Math.ceil(data.length / width); const amp = height / 2; ctx.beginPath(); ctx.strokeStyle = '#475569'; ctx.lineWidth = 1; for (let i = 0; i < width; i++) { let min = 1.0; let max = -1.0; for (let j = 0; j < step; j++) { const idx = i * step + j; if (idx < data.length) { const datum = data[idx]; if (datum < min) min = datum; if (datum > max) max = datum; } } ctx.moveTo(i, (1 + min) * amp); ctx.lineTo(i, (1 + max) * amp); } ctx.stroke(); const scrollW = containerRef.current.scrollWidth; const clientW = containerRef.current.clientWidth; if (scrollW > clientW) { const rectWidth = (clientW / scrollW) * width; const rectLeft = (scrollLeft / scrollW) * width; ctx.fillStyle = 'rgba(96, 165, 250, 0.2)'; ctx.fillRect(rectLeft, 0, rectWidth, height); ctx.strokeStyle = '#60a5fa'; ctx.lineWidth = 1; ctx.strokeRect(rectLeft, 0, rectWidth, height); } }, [audioBuffer, scrollLeft, zoomLevel]);
 
             return (
                 <div className="min-h-screen bg-slate-900 text-slate-100 p-6 font-sans">
@@ -676,6 +858,7 @@
                             <button onClick={() => setViewMode('manual_input')} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition ${viewMode === 'manual_input' ? 'bg-green-600 text-white' : 'text-slate-400 hover:text-white'}`}><PenTool size={16} /> 單句輸入</button>
                             <button onClick={() => setViewMode('batch_qc')} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition ${viewMode === 'batch_qc' ? 'bg-orange-600 text-white' : 'text-slate-400 hover:text-white'}`}><ListChecks size={16} /> 產線</button>
                             <button onClick={() => setViewMode('loudness_analyzer')} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition ${viewMode === 'loudness_analyzer' ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-white'}`}><Activity size={16} /> 音量檢測</button>
+                            <button onClick={() => setViewMode('web_parser')} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition ${viewMode === 'web_parser' ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-white'}`}><Globe size={16} /> 網頁解析</button>
                         </div>
                         <div className="flex flex-wrap gap-3 w-full xl:w-auto items-center">
                             {/* Toolbar content based on mode */}
@@ -731,9 +914,16 @@
                                     <button onClick={downloadIssueReport} disabled={markers.length === 0} className={`bg-red-900 hover:bg-red-700 transition px-4 py-2 rounded-lg flex items-center gap-2 text-red-100`} title="下載問題報告">
                                         <FileText size={18} /> <span>筆記</span>
                                     </button>
-                                    <button onClick={downloadAllZip} disabled={markers.length === 0 || isZipping} className={`bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 transition px-4 py-2 rounded-lg`} title="打包下載">
+                                    {/* ZIP DOWNLOAD BUTTONS */}
+                                    <button onClick={downloadAllZipWav} disabled={markers.length === 0 || isZipping} className={`bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 transition px-4 py-2 rounded-lg flex items-center gap-1`} title="打包下載 (WAV)">
                                         {isZipping ? <RefreshCw className="animate-spin" size={18}/> : <Package size={18} />}
+                                        <span className="text-xs font-bold">WAV</span>
                                     </button>
+                                    <button onClick={downloadAllZipMp3} disabled={markers.length === 0 || isZipping} className={`bg-pink-600 hover:bg-pink-700 disabled:opacity-50 transition px-4 py-2 rounded-lg flex items-center gap-1`} title="打包下載 (MP3)">
+                                        {isZipping ? <RefreshCw className="animate-spin" size={18}/> : <FileMusic size={18} />}
+                                        <span className="text-xs font-bold">MP3</span>
+                                    </button>
+                                    
                                     <button onClick={exportCSV} disabled={markers.length === 0} className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 transition px-4 py-2 rounded-lg" title="匯出 CSV">
                                         <Download size={18} />
                                     </button>
@@ -921,6 +1111,119 @@
                         </div>
                     )}
 
+                    {/* WEB PARSER MODE VIEW */}
+                    {viewMode === 'web_parser' && (
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-[800px]">
+                            {/* Left: Input */}
+                            <div className="bg-slate-800 p-5 rounded-xl border border-slate-700 flex flex-col gap-4">
+                                <div>
+                                    <h3 className="text-lg font-bold text-white mb-2 flex items-center gap-2"><Globe size={18}/> 網頁原始碼解析</h3>
+                                    <textarea 
+                                        value={webHtml}
+                                        onChange={(e) => setWebHtml(e.target.value)}
+                                        placeholder="請在網頁按右鍵 -> '檢視網頁原始碼' (View Source)，然後全選複製貼上到這裡..."
+                                        className="w-full h-48 bg-slate-900 border border-slate-600 rounded-lg p-3 text-xs text-white font-mono leading-relaxed resize-none focus:ring-2 focus:ring-cyan-500 outline-none"
+                                    />
+                                </div>
+                                <div className="border-t border-slate-700 pt-4">
+                                    <h3 className="text-lg font-bold text-white mb-2 flex items-center gap-2"><Link size={18}/> 目標列表 (選填)</h3>
+                                    <textarea 
+                                        value={userTargetList}
+                                        onChange={(e) => setUserTargetList(e.target.value)}
+                                        placeholder="格式：目標檔名  內容 (用於自動比對)&#10;525  yakay inu...&#10;526  kavay..."
+                                        className="w-full h-48 bg-slate-900 border border-slate-600 rounded-lg p-3 text-xs text-white font-mono leading-relaxed resize-none focus:ring-2 focus:ring-cyan-500 outline-none"
+                                    />
+                                </div>
+                                <div className="border-t border-slate-700 pt-4">
+                                    <h3 className="text-lg font-bold text-white mb-2 flex items-center gap-2"><FolderInput size={18}/> 本機音檔配對 (選填)</h3>
+                                    <label className={`flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-600 transition px-4 py-3 rounded-lg cursor-pointer font-medium border border-dashed border-slate-600`}>
+                                        <FileAudio size={18} className="text-orange-400"/>
+                                        <span className="text-sm">選擇已下載的音檔 (多選)</span>
+                                        <span className="text-xs text-slate-400">已選: {Object.keys(webAudioFiles).length}</span>
+                                        <input type="file" accept="audio/*" multiple onChange={handleWebAudioUpload} className="hidden" />
+                                    </label>
+                                </div>
+                                <div className="flex gap-2 mt-auto">
+                                    <button onClick={handleHtmlParse} className="flex-1 bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-3 rounded-lg shadow-lg transition flex items-center justify-center gap-2">
+                                        <Search size={18}/> 解析 HTML
+                                    </button>
+                                    <button onClick={handleWebAutoMatch} disabled={webMappingResult.length === 0} className="flex-1 bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 rounded-lg shadow-lg transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+                                        <Wand2 size={18}/> 自動比對
+                                    </button>
+                                </div>
+                                {isProcessing && (
+                                    <div className="w-full bg-slate-700 rounded-full h-2.5 mt-2">
+                                        <div className="bg-cyan-500 h-2.5 rounded-full transition-all duration-300" style={{ width: `${progress}%` }}></div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Right: Result */}
+                            <div className="bg-slate-800 p-5 rounded-xl border border-slate-700 flex flex-col overflow-hidden">
+                                <div className="flex justify-between items-center mb-4 pb-2 border-b border-slate-700">
+                                    <h3 className="text-lg font-bold text-white flex items-center gap-2"><ListChecks size={20}/> 解析結果 ({webMappingResult.length})</h3>
+                                    <div className="flex gap-2">
+                                        <button onClick={downloadWebParsedFiles} disabled={isProcessing || webParsedList.length === 0} className="text-xs bg-emerald-600 hover:bg-emerald-700 px-3 py-1.5 rounded text-white flex items-center gap-1 font-bold disabled:opacity-50 disabled:cursor-not-allowed"><Download size={14}/> 更名打包 (ZIP)</button>
+                                        <button onClick={() => {
+                                            let text = "";
+                                            webMappingResult.forEach(r => text += `${r.file}\t${r.text}\n`);
+                                            copyToClipboard(text);
+                                        }} className="text-xs bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded text-white flex items-center gap-1"><ClipboardPaste size={14}/> 複製列表</button>
+                                    </div>
+                                </div>
+                                <div className="overflow-y-auto flex-1 custom-scrollbar">
+                                    {webParsedList.length > 0 ? (
+                                        <table className="w-full text-sm text-left">
+                                            <thead className="text-xs text-slate-400 uppercase bg-slate-800 sticky top-0">
+                                                <tr>
+                                                    <th className="px-3 py-2">目標檔名</th>
+                                                    <th className="px-3 py-2">原始檔名</th>
+                                                    <th className="px-3 py-2 text-center">相似度</th>
+                                                    <th className="px-3 py-2">內容</th>
+                                                    <th className="px-3 py-2">狀態</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-700/50">
+                                                {webParsedList.map((item, idx) => (
+                                                    <tr key={idx} className="hover:bg-slate-700/30">
+                                                        <td className="px-3 py-2 font-mono text-orange-300">{item.targetName}</td>
+                                                        <td className="px-3 py-2 font-mono text-cyan-300 text-xs truncate max-w-[150px]" title={item.originalName}>{item.originalName}</td>
+                                                        <td className={`px-3 py-2 text-center font-bold ${item.score > 80 ? 'text-green-400' : item.score > 50 ? 'text-yellow-400' : 'text-red-400'}`}>{item.score}%</td>
+                                                        <td className="px-3 py-2 text-slate-300 text-xs truncate max-w-[200px]" title={item.content}>{item.content}</td>
+                                                        <td className="px-3 py-2">
+                                                            {item.localFileStatus === 'ready' ? <span className="text-emerald-400 text-xs flex items-center gap-1"><CheckCircle2 size={10}/> Ready</span> : <span className="text-slate-500 text-xs">Missing</span>}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    ) : (
+                                        <div className="h-full flex items-center justify-center text-slate-500">
+                                            {webMappingResult.length > 0 ? (
+                                                <table className="w-full text-sm text-left">
+                                                <thead className="text-xs text-slate-400 uppercase bg-slate-800 sticky top-0">
+                                                    <tr>
+                                                        <th className="px-3 py-2">原始檔名</th>
+                                                        <th className="px-3 py-2">內容</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-700/50">
+                                                    {webMappingResult.map((item, idx) => (
+                                                        <tr key={idx} className="hover:bg-slate-700/30">
+                                                            <td className="px-3 py-2 font-mono text-cyan-300">{item.file}</td>
+                                                            <td className="px-3 py-2 text-slate-300">{item.text}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                                </table>
+                                            ) : "尚未解析資料"}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {/* BATCH QC MODE VIEW */}
                     {viewMode === 'batch_qc' && (
                         <div className="grid grid-cols-12 gap-6 h-[800px]">
@@ -931,10 +1234,10 @@
                                     <textarea 
                                         value={batchQcTextRaw}
                                         onChange={handleBatchQcTextChange}
-                                        placeholder="貼上格式：&#10;目標檔名  內容(族語)&#10;525  yakay inu...&#10;526  kavay..."
+                                        placeholder="貼上格式：&#10;目標檔名  (原始檔名)  內容&#10;525  1283.mp3  yakay inu...&#10;526  kavay..."
                                         className="w-full h-64 bg-slate-900 border border-slate-600 rounded-lg p-3 text-xs text-white font-mono leading-relaxed resize-none focus:ring-2 focus:ring-orange-500 outline-none"
                                     />
-                                    <p className="text-xs text-slate-500 mt-2">系統會自動依序對應右側上傳的音檔。</p>
+                                    <p className="text-xs text-slate-500 mt-2">支援三欄式輸入 (目標 | 原始 | 內容)，可自動對應亂序檔名。</p>
                                 </div>
                                 <div className="border-t border-slate-700 pt-4">
                                     <h3 className="text-lg font-bold text-white mb-2 flex items-center gap-2"><Upload size={18}/> 2. 批次上傳音檔</h3>
@@ -971,10 +1274,17 @@
                                                     <div className="col-span-4 min-w-0">
                                                         <div className="flex items-center gap-2 mb-1">
                                                             <span className="text-orange-300 font-bold font-mono text-sm">{item.targetName}</span>
-                                                            {item.status === 'missing' && <span className="text-[10px] bg-red-900 text-red-200 px-1 rounded">缺檔</span>}
-                                                            {item.hasIssue && <span className="text-[10px] bg-red-600 text-white px-1 rounded flex items-center gap-1"><AlertTriangle size={8}/> {item.issueReason}</span>}
+                                                            {/* SHIFT CONTROLS - Now adjusting the TARGET NAME (orange number) */}
+                                                            <div className="flex items-center bg-slate-700/50 rounded ml-2 gap-0.5">
+                                                                <button onClick={() => handleQcTargetShift(item.id, -10)} className="p-1 hover:bg-slate-600 text-slate-400 hover:text-white transition" title="編號 -10"><ChevronsLeft size={10}/></button>
+                                                                <button onClick={() => handleQcTargetShift(item.id, -1)} className="p-1 hover:bg-slate-600 text-slate-400 hover:text-white transition" title="編號 -1"><ChevronLeft size={10}/></button>
+                                                                <button onClick={() => handleQcTargetShift(item.id, 1)} className="p-1 hover:bg-slate-600 text-slate-400 hover:text-white transition" title="編號 +1"><ChevronRight size={10}/></button>
+                                                                <button onClick={() => handleQcTargetShift(item.id, 10)} className="p-1 hover:bg-slate-600 text-slate-400 hover:text-white transition" title="編號 +10"><ChevronsRight size={10}/></button>
+                                                            </div>
                                                         </div>
-                                                        <div className="text-slate-400 text-xs truncate" title={item.originalName}>{item.originalName}</div>
+                                                        <div className="text-slate-400 text-xs truncate" title={item.originalName}>
+                                                            {item.status === 'missing' ? <span className="text-red-400">缺檔</span> : item.originalName}
+                                                        </div>
                                                     </div>
                                                     <div className="col-span-4 text-sm text-slate-200 truncate" title={item.content}>{item.content}</div>
                                                     <div className="col-span-3 flex justify-end gap-2 items-center">
@@ -1003,112 +1313,6 @@
                                     )}
                                 </div>
                              </div>
-                        </div>
-                    )}
-
-                    {/* WAVEFORM VISUALIZER - Toggleable */}
-                    {viewMode === 'splitter' && (
-                        <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
-                            <div className="flex justify-between items-center mb-4">
-                                <div className="flex items-center gap-4">
-                                    <button 
-                                        onClick={() => setShowBigWaveform(!showBigWaveform)}
-                                        className="flex items-center gap-2 text-sm font-semibold text-slate-300 hover:text-white transition"
-                                    >
-                                        {showBigWaveform ? <Eye size={18} className="text-blue-400" /> : <EyeOff size={18} />}
-                                        波形預覽 ({fileName})
-                                    </button>
-                                </div>
-                                <div className="flex items-center gap-4 bg-slate-900/50 p-2 rounded-lg">
-                                    {showBigWaveform && (
-                                        <>
-                                            <div className="flex items-center gap-2"><ZoomIn size={14} className="text-slate-400"/><input type="range" min="1" max="20" step="0.5" value={zoomLevel} onChange={(e) => setZoomLevel(Number(e.target.value))} className="w-24 h-2 bg-slate-600 rounded-lg accent-blue-500 cursor-pointer"/></div>
-                                            <div className="w-px h-4 bg-slate-700"></div>
-                                            <div className="flex items-center gap-2"><Activity size={14} className="text-slate-400"/><input type="range" min="1" max="10" step="0.5" value={ampScale} onChange={(e) => setAmpScale(Number(e.target.value))} className="w-24 h-2 bg-slate-600 rounded-lg accent-purple-500 cursor-pointer"/></div>
-                                        </>
-                                    )}
-                                </div>
-                            </div>
-                            
-                            {showBigWaveform && (
-                                <>
-                                    {/* Main Canvas Scrollable */}
-                                    <div 
-                                        ref={containerRef} 
-                                        onScroll={handleContainerScroll}
-                                        className="relative w-full h-64 bg-slate-900 rounded-lg overflow-x-auto overflow-y-hidden border border-slate-700 custom-scrollbar select-none group"
-                                    >
-                                        <canvas 
-                                            ref={canvasRef} 
-                                            height={256} 
-                                            className="h-full" 
-                                            onMouseDown={handleCanvasMouseDown}
-                                            onMouseMove={handleCanvasMouseMove}
-                                            onMouseUp={handleCanvasMouseUp}
-                                            onMouseLeave={handleCanvasMouseLeave}
-                                        />
-                                        {!audioBuffer && <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-500 gap-2"><Upload size={32} className="opacity-50"/><p>請上傳音檔以開始編輯</p></div>}
-                                    </div>
-
-                                    {/* Navigation Minimap */}
-                                    {audioBuffer && (
-                                        <div className="mt-2 relative h-12 w-full bg-slate-900 rounded border border-slate-700 overflow-hidden cursor-pointer"
-                                             onMouseDown={handleMinimapMouseDown}
-                                             onMouseMove={handleMinimapMouseMove}
-                                             onMouseUp={() => setDragTarget(null)}
-                                             onMouseLeave={() => setDragTarget(null)}
-                                        >
-                                            <canvas ref={minimapRef} width={containerRef.current?.clientWidth || 800} height={48} className="w-full h-full" />
-                                        </div>
-                                    )}
-
-                                    {/* Metadata / Player Info Bar */}
-                                    <div className="flex justify-between items-start mt-3">
-                                        <div className="text-xs text-slate-500 font-mono flex flex-col justify-center">
-                                            <span>{audioBuffer ? formatTime(currentTime) : '00:00:00.000'}</span>
-                                            <span>{audioBuffer ? formatTime(audioBuffer.duration) : '--:--:--.---'}</span>
-                                        </div>
-                                        
-                                        {/* Active Display Area */}
-                                        {activeDisplay && (
-                                            <div className="flex-1 mx-6 bg-slate-900/80 border border-slate-600 rounded-lg p-2 flex items-center gap-3 animate-in fade-in slide-in-from-bottom-2">
-                                                <MessageSquare size={20} className="text-blue-400 shrink-0" />
-                                                <div className="flex flex-col min-w-0">
-                                                    <span className="text-sm font-bold text-white truncate">{activeDisplay.name}</span>
-                                                    {activeDisplay.secondary && <span className="text-xl text-emerald-400 font-mono truncate font-bold">{activeDisplay.secondary}</span>}
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        <div className="flex justify-center gap-4 text-xs text-slate-500 mt-1 flex-col items-end">
-                                            <span className="flex items-center gap-1"><MousePointer2 size={12}/> 空白處拖曳可框選建立新標記</span>
-                                            <span className="flex items-center gap-1"><Move size={12}/> 紅色區塊點擊播放 / 拖曳移動</span>
-                                        </div>
-                                    </div>
-                                </>
-                            )}
-                        </div>
-                    )}
-
-                    {viewMode === 'merger' && (
-                        <div className="bg-slate-800 p-6 rounded-xl border border-slate-700 min-h-[500px] flex flex-col gap-6">
-                            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                                <div><h2 className="text-xl font-bold flex items-center gap-2 text-purple-300"><Layers size={24} /> 批次合併 (Batch Merger)</h2><p className="text-slate-400 text-sm mt-1">上傳多個音檔，系統將依據 CSV 腳本順序合併。自動偵測並切分一檔多句的情況。</p></div>
-                                <div className="flex gap-4 items-center"><label className={`flex items-center gap-2 bg-purple-600 hover:bg-purple-700 transition px-4 py-2 rounded-lg cursor-pointer font-bold ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}><Upload size={18} /> <span>選擇多個檔案</span><input type="file" accept="audio/*" multiple onChange={handleStagedFilesUpload} disabled={isProcessing} className="hidden" /></label></div>
-                            </div>
-                            <div className="flex-1 bg-slate-900/50 rounded-lg border border-slate-700 overflow-hidden">
-                                {uniqueFileNames.length === 0 ? (<div className="flex flex-col items-center justify-center h-64 text-slate-500"><FileSpreadsheet size={48} className="opacity-20 mb-4" /><p>請先載入 CSV 腳本以顯示列表</p></div>) : (
-                                    <div className="overflow-y-auto max-h-[600px]">
-                                        <table className="w-full text-sm text-left"><thead className="text-xs text-slate-400 uppercase bg-slate-800 sticky top-0"><tr><th className="px-4 py-3">#</th><th className="px-4 py-3">原始檔名 (CSV Source)</th><th className="px-4 py-3">狀態</th><th className="px-4 py-3 text-right">操作</th></tr></thead><tbody className="divide-y divide-slate-700/50">
-                                            {uniqueFileNames.map((fname, idx) => {
-                                                const isMatched = !!stagedFiles[fname];
-                                                return (<tr key={idx} className={`hover:bg-slate-700/30 ${isMatched ? 'bg-slate-800/50' : ''}`}><td className="px-4 py-2 font-mono text-slate-500">{idx + 1}</td><td className="px-4 py-2 text-slate-300 font-medium">{fname}</td><td className="px-4 py-2">{isMatched ? (<span className="inline-flex items-center gap-1 text-emerald-400 text-xs"><CheckCircle2 size={12}/> Ready</span>) : (<span className="inline-flex items-center gap-1 text-slate-500 text-xs"><XCircle size={12}/> Missing</span>)}</td><td className="px-4 py-2 text-right">{isMatched && (<button onClick={() => removeStagedFile(fname)} className="text-slate-500 hover:text-red-400 p-1" title="移除音檔"><Trash2 size={14}/></button>)}</td></tr>)
-                                            })}
-                                        </tbody></table>
-                                    </div>
-                                )}
-                            </div>
-                            <div className="flex justify-end pt-4 border-t border-slate-700"><button onClick={handleMergeAndLoad} disabled={uniqueFileNames.length === 0 || isProcessing} className="flex items-center gap-2 px-6 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg font-bold text-white shadow-lg shadow-emerald-900/20 transition">{isProcessing ? <RefreshCw className="animate-spin" size={20}/> : <Merge size={20} />}<span>{isProcessing ? '處理中...' : '開始合併並自動切分'}</span>{!isProcessing && <ArrowRight size={20} />}</button></div>
                         </div>
                     )}
                 </div>
